@@ -13,8 +13,14 @@ from tqdm import tqdm
 
 # ==== Argument parser ====
 parser = argparse.ArgumentParser()
-parser.add_argument("--model_name", type=str, default="meta-llama/Llama-3.2-1B")
+parser.add_argument("--model_name", type=str, default="meta-llama/Llama-3.1-8B")
 parser.add_argument("--seed", type=int, default=12345)
+parser.add_argument(
+    "--lang_codes",
+    type=str,
+    required=True,
+    help="Comma-separated language codes, e.g. asm,ben,guj"
+)
 args = parser.parse_args()
 
 model_name = args.model_name
@@ -28,12 +34,17 @@ def set_seed(seed: int) -> None:
 
 set_seed(args.seed)
 
-# ==== Define valid languages and relations ====
-languages = {
-    # "meta-llama/Llama-3.2-1B": ["hin"],
-    "meta-llama/Llama-3.1-8B": ["en","hinglish_dev"],
-    "Qwen/Qwen2.5-7B": ["en","hinglish_dev"],
-}
+# # ==== Define valid languages and relations ====F
+# languages = {
+#     # "meta-llama/Llama-3.2-1B": ["hin"],
+#     # "meta-llama/Llama-3.1-8B": ["hin","en","hinglish_dev"],
+#     # "Qwen/Qwen2.5-7B": ["hin","en","hinglish_dev"],
+#     # "meta-llama/Llama-3.1-8B": ["asm","asm-en","ben","bn-en","guj","guj-en","mal","mal-en","ori","ori-en","mar"],
+#     "meta-llama/Llama-3.1-8B-Instruct": ["asm","asm-en","ben","bn-en","guj","guj-en","mal","mal-en","ori","ori-en","mar"],
+#     # "Qwen/Qwen2.5-7B": ["asm","asm-en","ben","bn-en","guj","guj-en","mal","mal-en","ori","ori-en","mar"],
+#     # "google/gemma-7b": ["asm","asm-en","ben","bn-en","guj","guj-en","mal","mal-en","ori","ori-en","mar"],
+
+# }
 relations = [
     "applies_to_jurisdiction", "capital", "capital_of", "continent",
     "country_of_citizenship", "developer", "field_of_work", "headquarters_location",
@@ -41,7 +52,8 @@ relations = [
     "manufacturer", "native_language", "occupation", "official_language",
     "owned_by", "place_of_birth", "place_of_death", "religion"
 ]
-valid_langs = set(languages[model_name])
+# valid_langs = set(languages[model_name])
+valid_langs = set(c.strip() for c in args.lang_codes.split(",") if c.strip())
 valid_rels = set(relations)
 
 # ==== Group file paths by relation ====
@@ -90,7 +102,7 @@ dataset = Dataset.from_list([apply_prompt(ex) for ex in samples])
 llm = LLM(
     model=model_name,
     trust_remote_code=True,
-    gpu_memory_utilization=0.25,
+    gpu_memory_utilization=0.35,
     max_model_len=4096,
     max_num_seqs=16
 )
@@ -142,7 +154,7 @@ def match_against_candidates(prediction, candidates, target):
     return is_correct, prediction
 
 # ==== Output directory ====
-OUTPUT_DIR = "filter_knowns_live_with_obj"
+OUTPUT_DIR = "Baseline_with_opt"
 
 def evaluate(llm, dataset, max_new_tokens=10, n_shot=3, save_path="filter_knowns/results.json"):
     test_data = list(dataset)
@@ -175,7 +187,7 @@ def evaluate(llm, dataset, max_new_tokens=10, n_shot=3, save_path="filter_knowns
 
     prompts = []
     prompt_metadata = []
-    batch_size = 1
+    batch_size = 32
 
     for idx, ex in enumerate(tqdm(test_data)):
         lang = ex.get("language", "unknown")
