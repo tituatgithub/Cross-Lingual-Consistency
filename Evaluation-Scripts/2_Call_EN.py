@@ -5,6 +5,7 @@ import random
 import argparse
 import numpy
 from vllm import LLM, SamplingParams
+from vllm.sampling_params import StructuredOutputsParams
 import torch
 from datasets import Dataset
 from transformers import AutoTokenizer, AutoModelForCausalLM
@@ -13,16 +14,41 @@ from tqdm import tqdm
 import time
 
 # ==== CONFIGURATION - SET THIS ONCE ====
-OUTPUT_DIR = "filter_knowns_explicit_en"
+OUTPUT_DIR = "filter_knowns_implicit-trans-en"
 # ======================================
 
 # ==== Argument parser ====
 parser = argparse.ArgumentParser()
-parser.add_argument("--model_name", type=str, default="Qwen/Qwen2.5-0.5B")
+parser.add_argument("--model_name", type=str, default="meta-llama/Llama-3.1-8B",
+                    help="Model name / HF hub path, e.g. meta-llama/Llama-3.1-8B")
+parser.add_argument("--lang_file", type=str, default=None,
+                    help="Path to a JSON file mapping model names to language lists, "
+                         "e.g. {\"meta-llama/Llama-3.1-8B\": [\"hin\", \"ben\"]}")
 parser.add_argument("--seed", type=int, default=12345)
+# ==== Dataset control: which directory and which language-code subdirs to load ====
+parser.add_argument("--data_dir", type=str, default="cm_klar",
+                    help="Root data directory to glob for JSON files, e.g. cm_klar, ben_klar")
+parser.add_argument("--lang_codes", type=str, default=None,
+                    help="Comma-separated language-code subdirs to load, e.g. hin,ben,ori. "
+                         "Overrides --lang_file / inline languages dict for this run.")
+# ==== Prompt placeholders: e.g. --source_lang Bengali --source_script Bengali --target_lang English ====
+parser.add_argument("--source_lang", type=str, default="Hindi",
+                    help="Source language name, e.g. Hindi, Bengali, Odia")
+parser.add_argument("--source_script", type=str, default="Devanagari",
+                    help="Script name for the source language, e.g. Devanagari, Bengali, Odia")
+parser.add_argument("--target_lang", type=str, default="English",
+                    help="Target language for the translation field, e.g. English")
 args = parser.parse_args()
 
-model_name = args.model_name
+model_name    = args.model_name
+SOURCE_LANG   = args.source_lang    # e.g. "Hindi", "Bengali"
+SOURCE_SCRIPT = args.source_script  # e.g. "Devanagari", "Bengali"
+TARGET_LANG   = args.target_lang    # e.g. "English"
+
+# ==== Key slugs for result dict fields (derived from language args) ====
+# e.g. SOURCE_LANG="Bengali" → src_key="bengali" → field "question_bengali"
+src_key = SOURCE_LANG.lower()   # used as: f"question_{src_key}"
+tgt_key = TARGET_LANG.lower()   # used as: f"{tgt_key}_question"
 
 # ==== Set random seed ====
 def set_seed(seed: int) -> None:
@@ -33,14 +59,20 @@ def set_seed(seed: int) -> None:
 
 set_seed(args.seed)
 
-# ==== Define valid languages and relations ====
-languages = {
-    "Qwen/Qwen2.5-0.5B":  ["hin"],
-    "Qwen/Qwen2.5-1.5B":  ["hin"],
-    "Qwen/Qwen2.5-3B":    ["hin"],
-    "meta-llama/Llama-3.2-1B": ["hin"],
-    "meta-llama/Llama-3.2-3B": ["hin"],
-}
+# ==== Resolve which language codes to load ====
+# Priority: --lang_codes > --lang_file > inline fallback dict
+if args.lang_codes:
+    valid_langs = set(c.strip() for c in args.lang_codes.split(",") if c.strip())
+
+elif args.lang_file:
+    with open(args.lang_file, "r", encoding="utf-8") as _lf:
+        languages = json.load(_lf)
+    valid_langs = set(languages.get(model_name, []))
+    if not valid_langs:
+        raise ValueError(f"No languages found for model: {model_name}")
+
+else:
+    raise ValueError("You must provide either --lang_codes or --lang_file")
 
 relations = [
     "applies_to_jurisdiction", "capital", "capital_of", "continent",
@@ -49,11 +81,12 @@ relations = [
     "manufacturer", "native_language", "occupation", "official_language",
     "owned_by", "place_of_birth", "place_of_death", "religion"
 ]
-valid_langs = set(languages[model_name])
 valid_rels = set(relations)
 
+print(f"[Dataset] data_dir={args.data_dir}  lang_codes={sorted(valid_langs)}")
+
 # ==== Group file paths by relation ====
-json_paths = glob.glob("cm_klar/*/*.json")
+json_paths = glob.glob(f"{args.data_dir}/*/*.json")
 path_map = defaultdict(dict)
 
 for path in json_paths:
@@ -77,7 +110,6 @@ for rel, lang_paths in path_map.items():
                 new_sample = {
                     "subject": sample["subject"],
                     "object": sample["object"],
-                    # ---- CHANGE: load object_candidates if present ----
                     "object_candidates": sample.get("object_candidates", None),
                     "language": lang,
                     "relation": rel,
@@ -92,12 +124,53 @@ dataset = Dataset.from_list(samples)
 llm = LLM(
     model=model_name,
     trust_remote_code=True,
-    gpu_memory_utilization=0.7,
+    gpu_memory_utilization=0.25,
     max_model_len=4096,
     max_num_seqs=16
 )
-sampling_params = SamplingParams(temperature=0.0, max_tokens=30, stop=["\n", "Answer"])
-translation_params = SamplingParams(temperature=0.0, max_tokens=100, stop=["\n", "Hindi:", "English:", "Example:"])
+
+# ==== Guided JSON schemas ====
+# Stage 1: Translation only (English → English, identity)
+TRANSLATION_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "translation": {"type": "string"}
+    },
+    "required": ["translation"],
+    "additionalProperties": False
+}
+
+# Stage 2: Answer only
+ANSWER_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "answer": {"type": "string"}
+    },
+    "required": ["answer"],
+    "additionalProperties": False
+}
+
+
+
+# guided_decoding = GuidedDecodingParams(json=GUIDED_JSON_SCHEMA)
+
+
+# sampling_params = SamplingParams(
+#     temperature=0.0,
+#     max_tokens=120,
+#     structured_outputs=StructuredOutputsParams(json=json.dumps(GUIDED_JSON_SCHEMA))
+# )
+stage1_sampling_params = SamplingParams(
+    temperature=0.0,
+    max_tokens=60,
+    structured_outputs=StructuredOutputsParams(json=json.dumps(TRANSLATION_SCHEMA))
+)
+
+stage2_sampling_params = SamplingParams(
+    temperature=0.0,
+    max_tokens=60,
+    structured_outputs=StructuredOutputsParams(json=json.dumps(ANSWER_SCHEMA))
+)
 
 
 # ==== Helpers ====
@@ -130,7 +203,6 @@ def overlapping_ratio(list1, list2):
     return len(intersection) / len(union) if union else 0
 
 
-# ---- NEW: match prediction against a candidate list ----
 def match_against_candidates(prediction: str, candidates: list[str], target: str) -> tuple[bool, str]:
     """
     Try to find the best-matching candidate for the model's raw prediction.
@@ -177,7 +249,22 @@ def match_against_candidates(prediction: str, candidates: list[str], target: str
     return is_correct, prediction
 
 
-# ==== Evaluation ====
+def parse_json_output(raw_text: str) -> tuple[str, str]:
+    """
+    Parse the guided-JSON output from the model.
+    Returns (translation, answer). Falls back gracefully on malformed output.
+    """
+    try:
+        parsed = json.loads(raw_text.strip())
+        translation = parsed.get("translation", "").strip()
+        answer      = parsed.get("answer", "").strip()
+        return translation, answer
+    except (json.JSONDecodeError, AttributeError):
+        # Malformed output — return empty translation, raw text as answer
+        return "", raw_text.strip()
+
+
+# # ==== Evaluation ====
 def evaluate(llm, dataset, max_new_tokens=10, n_shot=3):
     test_data = list(dataset)
     correct_total = 0
@@ -186,7 +273,7 @@ def evaluate(llm, dataset, max_new_tokens=10, n_shot=3):
     detailed_results = []
 
     model_safe_name = model_name.replace("/", "_")
-    lang_name = list(valid_langs)[0]
+    lang_name = "_".join(sorted(valid_langs))
     output_subdir = os.path.join(OUTPUT_DIR, model_safe_name, lang_name)
     os.makedirs(output_subdir, exist_ok=True)
 
@@ -199,14 +286,10 @@ def evaluate(llm, dataset, max_new_tokens=10, n_shot=3):
         key = (ex.get("relation"), ex.get("language"))
         candidates_by_key[key].append((i, ex))
 
-    base_prompt = "Answer with a short factual phrase in Hindi using Devanagari script only. Do not use English.\n\n"
-
     print(f"\n[Evaluating {len(test_data)} examples with {n_shot}-shot prompts]")
     print(f"📁 Output directory: {output_subdir}")
     print(f"💡 Tip: Run 'tail -f {live_path}' in another terminal to watch progress\n")
 
-    prompts = []
-    prompt_metadata = []
     batch_size = 1
 
     live_data = {
@@ -218,155 +301,228 @@ def evaluate(llm, dataset, max_new_tokens=10, n_shot=3):
     with open(live_path, "w", encoding="utf-8") as f:
         json.dump(live_data, f, indent=2, ensure_ascii=False)
 
-    pbar = tqdm(total=len(test_data), desc="Processing", unit="ex")
+    pbar = tqdm(total=len(test_data) * 2, desc="Processing (2-Stage)", unit="call")
 
+    stage1_base_prompt = (
+        f"You are a translator.\n"
+        f"Translate the following question from {SOURCE_LANG} ({SOURCE_SCRIPT}) into {TARGET_LANG}.\n\n"
+        f"Output ONLY: {{\"translation\": \"...\"}}\n\n"
+    )
+
+    stage2_base_prompt = (
+        f"You are answering a factual question.\n"
+        f"The question is in {TARGET_LANG}.\n"
+        f"Select the correct answer from the candidates and write it in {SOURCE_LANG} ({SOURCE_SCRIPT}).\n\n"
+        f"Output ONLY: {{\"answer\": \"...\"}}\n\n"
+        "Rules:\n"
+        "- Answer MUST be from the candidate list\n"
+        f"- Answer MUST be in {SOURCE_SCRIPT} script\n\n"
+    )
+    # ===== END =====
+
+    # ============================================
+    # STAGE 1: Build all translation prompts
+    # ============================================
+    print(f"\n[STAGE 1/2] Building {len(test_data)} translation prompts...")
+    
+    stage1_prompts = []
+    stage1_metadata = []
+    
     for idx, ex in enumerate(test_data):
-        lang     = ex.get("language", "unknown")
+        lang = ex.get("language", "unknown")
         relation = ex.get("relation", "unknown")
-        index    = ex.get("index", None)
+        index = ex.get("index", None)
 
-        key = (relation, lang)
-        candidates_pool = [c[1] for c in candidates_by_key[key] if c[0] != idx]
-        demonstrations  = random.sample(candidates_pool, min(n_shot, len(candidates_pool)))
-
-        # ---- Call 1: Translate Hindi question to English ----
         test_question = ex["template"].replace("<subject>", ex["subject"]).replace("<mask>", "").strip()
-        translation_prompt = (
-            "Translate the following Hindi question into fluent English.\n\n"
-            "Rules:\n"
-            "- Output MUST be in English only\n"
-            "- Preserve proper nouns (names of people, places, organisations) as-is\n"
-            "- Keep the question structure intact\n\n"
-            "Examples:\n"
-            "Hindi: दिल्ली भारत की राजधानी क्या है?\n"
-            "English: What is the capital of India, Delhi?\n\n"
-            "Hindi: आइंस्टीन का पेशा क्या था?\n"
-            "English: What was Einstein's occupation?\n\n"
-            "Hindi: मासूम XI की मृत्यु कहाँ हुई थी?\n"
-            "English: Where did Masoom XI die?\n\n"
-            f"Hindi: {test_question}\n"
-            "English:"
-        )
-        translation_output = llm.generate([translation_prompt], translation_params)
-        english_question   = translation_output[0].outputs[0].text.strip().split('\n')[0].strip()
+        
+        # Stage 1: No few-shot needed for English→English
+        s1_prompt = stage1_base_prompt
+        s1_prompt += f"Q: {test_question}\nOutput:"
 
-        # ---- Build few-shot prompt ----
-        # ---- CHANGE: if object_candidates exist, append them to the prompt ----
+        stage1_prompts.append(s1_prompt)
+        stage1_metadata.append((ex, lang, index, test_question))
+
+    # ============================================
+    # STAGE 1: Execute all translations
+    # ============================================
+    print(f"[STAGE 1/2] Executing {len(stage1_prompts)} translation calls...")
+    
+    english_translations = []
+    
+    for i in range(0, len(stage1_prompts), batch_size):
+        batch_prompts = stage1_prompts[i:i+batch_size]
+        batch_meta = stage1_metadata[i:i+batch_size]
+        
+        outputs = llm.generate(batch_prompts, stage1_sampling_params)
+        
+        for j, output in enumerate(outputs):
+            ex, lang, index, original_question = batch_meta[j]
+            raw_output = output.outputs[0].text
+            
+            try:
+                parsed = json.loads(raw_output.strip())
+                translated_q = parsed.get("translation", "").strip()
+            except:
+                translated_q = raw_output.strip()
+            
+            english_translations.append({
+                "ex": ex,
+                "lang": lang,
+                "index": index,
+                "original_question": original_question,
+                "english_question": translated_q,
+                "stage1_prompt": batch_prompts[j],
+                "stage1_raw": raw_output
+            })
+            
+            pbar.update(1)
+
+    # ============================================
+    # STAGE 2: Build all QA prompts
+    # ============================================
+    print(f"\n[STAGE 2/2] Building {len(english_translations)} QA prompts...")
+    
+    stage2_prompts = []
+    stage2_metadata = []
+    
+    for idx, item in enumerate(english_translations):
+        ex = item["ex"]
+        lang = item["lang"]
+        index = item["index"]
+        english_q = item["english_question"]
+        original_q = item["original_question"]
+        
+        relation = ex.get("relation", "unknown")
         object_candidates = parse_candidates(ex.get("object_candidates"))
+        candidates_str = ", ".join(object_candidates) if object_candidates else ""
 
-        few_shot_prompt = base_prompt
-        for d in demonstrations:
-            demo_question = d["template"].replace("<subject>", d["subject"]).replace("<mask>", "").strip()
-            demo_question = demo_question.replace("उत्तर है:", "").replace("?", "").strip()
-            few_shot_prompt += f"Q: {demo_question}\nA: {d['object']}\n\n"
+        # Stage 2: Few-shot from dataset (like Script 2)
+        s2_prompt = stage2_base_prompt
+        
+        key = (relation, lang)
+        candidates_pool = [c[1] for c in candidates_by_key[key] if c[0] != index]
+        if candidates_pool:
+            demonstrations = random.sample(candidates_pool, min(n_shot, len(candidates_pool)))
+            for d in demonstrations:
+                demo_question = d["template"].replace("<subject>", d["subject"]).replace("<mask>", "").strip()
+                demo_candidates = parse_candidates(d.get("object_candidates"))
+                demo_cands_str = ", ".join(demo_candidates) if demo_candidates else d["object"]
+                s2_prompt += f"Q: {demo_question}\n"
+                s2_prompt += f"Candidates: {demo_cands_str}\n"
+                s2_prompt += f"Output: {{\"answer\": \"{d['object']}\"}}\n\n"
+        
+        s2_prompt += f"Q: {english_q}\nCandidates: {candidates_str}\nOutput:"
 
-        english_clean = english_question.replace("Answer is:", "").replace("?", "").strip()
+        stage2_prompts.append(s2_prompt)
+        stage2_metadata.append((
+            ex, lang, index, object_candidates, 
+            english_q, original_q, item["stage1_prompt"], 
+            item["stage1_raw"]
+        ))
 
-        if object_candidates:
-            # Present a constrained multiple-choice style prompt
-            candidates_str = ", ".join(object_candidates)
-            few_shot_prompt += (
-                f"Q: {english_clean}\n"
-                f"Candidates: {candidates_str}\n"
-                f"A:"
-            )
-        else:
-            # No candidates — open generation as before
-            few_shot_prompt += f"Q: {english_clean}\nA:"
+    # ============================================
+    # STAGE 2: Execute all QA calls
+    # ============================================
+    print(f"[STAGE 2/2] Executing {len(stage2_prompts)} QA calls...")
+    
+    for i in range(0, len(stage2_prompts), batch_size):
+        batch_prompts = stage2_prompts[i:i+batch_size]
+        batch_meta = stage2_metadata[i:i+batch_size]
+        
+        outputs = llm.generate(batch_prompts, stage2_sampling_params)
+        
+        for j, output in enumerate(outputs):
+            ex, lang, index, object_candidates, english_q, original_q, s1_prompt, s1_raw = batch_meta[j]
+            raw_prediction = output.outputs[0].text
+            
+            target = ex["object"].strip()
+            
+            try:
+                parsed = json.loads(raw_prediction.strip())
+                prediction = parsed.get("answer", "").strip()
+            except:
+                prediction = raw_prediction.strip()
 
-        prompts.append(few_shot_prompt)
-        prompt_metadata.append((ex, lang, index, english_question, object_candidates))
+            if object_candidates:
+                match, matched_candidate = match_against_candidates(prediction, object_candidates, target)
+            else:
+                match = is_nontrivial_prefix(prediction, target) or is_nontrivial_prefix(target, prediction)
+                matched_candidate = prediction
 
-        if len(prompts) == batch_size or idx == len(test_data) - 1:
-            outputs = llm.generate(prompts, sampling_params)
+            correct_total += int(match)
+            total_total += 1
+            per_lang_results[lang]["correct"] += int(match)
+            per_lang_results[lang]["total"] += 1
+            if match:
+                per_lang_results[lang]["correct_indices"].append(index)
 
-            for i, output in enumerate(outputs):
-                ex, lang, index, english_question, object_candidates = prompt_metadata[i]
-                raw_prediction = output.outputs[0].text
-
-                target   = ex["object"].strip()
-                question = ex["template"].replace("<subject>", ex["subject"]).replace("<mask>", "").strip()
-
-                lines      = raw_prediction.strip().split('\n')
-                prediction = lines[0].strip()
-
-                # ---- CHANGE: use candidate-aware matching when candidates are available ----
-                if object_candidates:
-                    match, matched_candidate = match_against_candidates(prediction, object_candidates, target)
-                else:
-                    match = is_nontrivial_prefix(prediction, target) or is_nontrivial_prefix(target, prediction)
-                    matched_candidate = prediction
-
-                correct_total += int(match)
-                total_total   += 1
-                per_lang_results[lang]["correct"] += int(match)
-                per_lang_results[lang]["total"]   += 1
-                if match:
-                    per_lang_results[lang]["correct_indices"].append(index)
-
-                result_entry = {
-                    "index":              index,
-                    "relation":           relation,
-                    "subject":            ex["subject"],
-                    "question_hindi":     question,
-                    "english_question":   english_question,
-                    "model_prediction":   prediction,
-                    # ---- CHANGE: extra fields for candidate-based evaluation ----
-                    "matched_candidate":  matched_candidate,
-                    "object_candidates":  object_candidates if object_candidates else None,
-                    "used_candidates":    bool(object_candidates),
-                    "ground_truth":       target,
-                    "is_correct":         bool(match),
-                    "raw_output":         raw_prediction
-                }
-
-                detailed_results.append(result_entry)
-
-                # ==== LIVE UPDATE ====
-                progress_percent = (total_total / len(test_data)) * 100
-                live_data = {
-                    "progress": f"{total_total}/{len(test_data)}",
-                    "percent":  f"{progress_percent:.1f}%",
-                    "current_example": {
-                        "index":              index,
-                        "subject":            ex["subject"],
-                        "question_hindi":     question,
-                        "english_question":   english_question,
-                        "model_prediction":   prediction,
-                        "matched_candidate":  matched_candidate,
-                        "ground_truth":       target,
-                        "is_correct":         bool(match)
-                    },
-                    "running_accuracy": f"{(correct_total/total_total)*100:.2f}%" if total_total > 0 else "0%",
-                    "results_so_far":   detailed_results[-50:]
-                }
-
-                with open(live_path, "w", encoding="utf-8") as f:
-                    json.dump(live_data, f, indent=2, ensure_ascii=False)
-
-                status = "✅" if match else "❌"
-                print(f"\n{status} [{total_total}/{len(test_data)}] Subject: {ex['subject']}")
-                print(f"   Hindi Q:         {question}")
-                print(f"   English Q:       {english_question}")
-                print(f"   Candidates:      {', '.join(object_candidates) if object_candidates else 'N/A (open gen)'}")
-                print(f"   Raw prediction:  {prediction}")
-                print(f"   Matched cand.:   {matched_candidate}")
-                print(f"   Ground Truth:    {target}")
-                print(f"   Running Acc:     {(correct_total/total_total)*100:.2f}%")
-
-            prompts.clear()
-            prompt_metadata.clear()
-            pbar.update(batch_size)
+            result_entry = {
+                "index": index,
+                "relation": ex.get("relation", "unknown"),
+                "subject": ex["subject"],
+                f"question_{src_key}": original_q,
+                f"{tgt_key}_question": english_q,
+                "stage1_prompt": s1_prompt,
+                "stage1_raw_output": s1_raw,
+                "stage2_prompt": batch_prompts[j],
+                "stage2_raw_output": raw_prediction,
+                "model_prediction": prediction,
+                "matched_candidate": matched_candidate,
+                "object_candidates": object_candidates if object_candidates else None,
+                "used_candidates": bool(object_candidates),
+                "ground_truth": target,
+                "is_correct": bool(match),
+            }
+            
+            detailed_results.append(result_entry)
+            
+            progress_percent = (total_total / len(test_data)) * 100
+            live_data = {
+                "progress": f"{total_total}/{len(test_data)}",
+                "percent": f"{progress_percent:.1f}%",
+                "current_example": {
+                    "index": index,
+                    "subject": ex["subject"],
+                    f"question_{src_key}": original_q,
+                    f"{tgt_key}_question": english_q,
+                    "model_prediction": prediction,
+                    "matched_candidate": matched_candidate,
+                    "ground_truth": target,
+                    "is_correct": bool(match),
+                    "stage1_prompt": s1_prompt,
+                    "stage2_prompt": batch_prompts[j],
+                },
+                "running_accuracy": f"{(correct_total/total_total)*100:.2f}%" if total_total > 0 else "0%",
+                "results_so_far": detailed_results[-50:]
+            }
+            
+            with open(live_path, "w", encoding="utf-8") as f:
+                json.dump(live_data, f, indent=2, ensure_ascii=False)
+            
+            status = "✅" if match else "❌"
+            print(f"\n{status} [{total_total}/{len(test_data)}] Subject: {ex['subject']}")
+            print(f"   {SOURCE_LANG} Q:    {original_q}")
+            print(f"   {TARGET_LANG}:      {english_q}")
+            print(f"   Candidates:        {', '.join(object_candidates) if object_candidates else 'N/A'}")
+            print(f"   Raw prediction:    {prediction}")
+            print(f"   Matched candidate: {matched_candidate}")
+            print(f"   Ground truth:      {target}")
+            print(f"   Running Acc:       {(correct_total/total_total)*100:.2f}%")
+            
+            pbar.update(1)
 
     pbar.close()
 
     overall_acc = correct_total / total_total if total_total > 0 else 0
 
     results = {
-        "overall_acc":        overall_acc,
-        "overall_clc":        None,
-        "per_language_acc":   {},
-        "per_language_clc":   {}
+        "overall_acc": overall_acc,
+        "overall_clc": None,
+        "per_language_acc": {},
+        "per_language_clc": {},
+        "pipeline_type": "explicit_two_stage_en",
+        "stage1_description": f"{SOURCE_LANG} -> {TARGET_LANG} translation",
+        "stage2_description": f"{TARGET_LANG} question -> {SOURCE_SCRIPT} answer",
     }
 
     for lang, res in sorted(per_lang_results.items()):
@@ -402,8 +558,8 @@ def evaluate(llm, dataset, max_new_tokens=10, n_shot=3):
     with open(detailed_path, "w", encoding="utf-8") as f:
         json.dump(detailed_results, f, indent=4, ensure_ascii=False)
 
-    live_data["status"]           = "COMPLETED"
-    live_data["final_accuracy"]   = f"{overall_acc:.2f}"
+    live_data["status"] = "COMPLETED"
+    live_data["final_accuracy"] = f"{overall_acc:.2f}"
     with open(live_path, "w", encoding="utf-8") as f:
         json.dump(live_data, f, indent=2, ensure_ascii=False)
 
@@ -413,6 +569,8 @@ def evaluate(llm, dataset, max_new_tokens=10, n_shot=3):
     print(f"   Live Log → {live_path}")
 
     return results
+
+
 
 # Run evaluation
 evaluate(llm, dataset, max_new_tokens=10, n_shot=3)
