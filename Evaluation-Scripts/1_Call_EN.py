@@ -14,7 +14,7 @@ from tqdm import tqdm
 import time
 
 # ==== CONFIGURATION - SET THIS ONCE ====
-OUTPUT_DIR = "filter_knowns_implicit-trans-en"
+OUTPUT_DIR = "1_Call_EN"
 # ======================================
 
 # ==== Argument parser ====
