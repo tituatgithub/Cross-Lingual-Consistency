@@ -14,7 +14,7 @@ from tqdm import tqdm
 import time
 
 # ==== CONFIGURATION - SET THIS ONCE ====
-OUTPUT_DIR = "filter_knowns-trans-english-prompt-implicit-in-mind"
+OUTPUT_DIR = "Implicit_EN"
 # ======================================
 
 # ==== Argument parser ====
