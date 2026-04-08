@@ -19,11 +19,36 @@ OUTPUT_DIR = "filter_knowns_implicit-trans-en"
 
 # ==== Argument parser ====
 parser = argparse.ArgumentParser()
-parser.add_argument("--model_name", type=str, default="meta-llama/Llama-3.1-8B")
+parser.add_argument("--model_name", type=str, default="meta-llama/Llama-3.1-8B",
+                    help="Model name / HF hub path, e.g. meta-llama/Llama-3.1-8B")
+parser.add_argument("--lang_file", type=str, default=None,
+                    help="Path to a JSON file mapping model names to language lists, "
+                         "e.g. {\"meta-llama/Llama-3.1-8B\": [\"hin\", \"ben\"]}")
 parser.add_argument("--seed", type=int, default=12345)
+# ==== Dataset control: which directory and which language-code subdirs to load ====
+parser.add_argument("--data_dir", type=str, default="cm_klar",
+                    help="Root data directory to glob for JSON files, e.g. cm_klar, ben_klar")
+parser.add_argument("--lang_codes", type=str, default=None,
+                    help="Comma-separated language-code subdirs to load, e.g. hin,ben,ori. "
+                         "Overrides --lang_file / inline languages dict for this run.")
+# ==== Prompt placeholders: e.g. --source_lang Bengali --source_script Bengali --target_lang English ====
+parser.add_argument("--source_lang", type=str, default="Hindi",
+                    help="Source language name, e.g. Hindi, Bengali, Odia")
+parser.add_argument("--source_script", type=str, default="Devanagari",
+                    help="Script name for the source language, e.g. Devanagari, Bengali, Odia")
+parser.add_argument("--target_lang", type=str, default="English",
+                    help="Target language for the translation field, e.g. English")
 args = parser.parse_args()
 
-model_name = args.model_name
+model_name    = args.model_name
+SOURCE_LANG   = args.source_lang    # e.g. "Hindi", "Bengali"
+SOURCE_SCRIPT = args.source_script  # e.g. "Devanagari", "Bengali"
+TARGET_LANG   = args.target_lang    # e.g. "English"
+
+# ==== Key slugs for result dict fields (derived from language args) ====
+# e.g. SOURCE_LANG="Bengali" → src_key="bengali" → field "question_bengali"
+src_key = SOURCE_LANG.lower()   # used as: f"question_{src_key}"
+tgt_key = TARGET_LANG.lower()   # used as: f"{tgt_key}_question"
 
 # ==== Set random seed ====
 def set_seed(seed: int) -> None:
@@ -34,17 +59,18 @@ def set_seed(seed: int) -> None:
 
 set_seed(args.seed)
 
-# ==== Define valid languages and relations ====
-languages = {
-    # "meta-llama/Llama-3.2-1B": ["hin"],
-    "Qwen/Qwen2.5-0.5B":  ["hin"],
-    "Qwen/Qwen2.5-1.5B":  ["hin"],
-    "Qwen/Qwen2.5-3B":    ["hin"],
-    "meta-llama/Llama-3.2-1B": ["hin"],
-    "meta-llama/Llama-3.2-3B": ["hin"],
-    # "meta-llama/Llama-3.1-8B": ["hin"],
-    # "Qwen/Qwen2.5-7B": ["hin"],
-}
+
+if args.lang_codes:
+    valid_langs = set(c.strip() for c in args.lang_codes.split(",") if c.strip())
+
+elif args.lang_file:
+    with open(args.lang_file, "r", encoding="utf-8") as _lf:
+        languages = json.load(_lf)
+    valid_langs = set(languages[model_name])
+
+else:
+    raise ValueError("You must provide either --lang_codes or --lang_file")
+
 relations = [
     "applies_to_jurisdiction", "capital", "capital_of", "continent",
     "country_of_citizenship", "developer", "field_of_work", "headquarters_location",
@@ -52,11 +78,12 @@ relations = [
     "manufacturer", "native_language", "occupation", "official_language",
     "owned_by", "place_of_birth", "place_of_death", "religion"
 ]
-valid_langs = set(languages[model_name])
 valid_rels = set(relations)
 
+print(f"[Dataset] data_dir={args.data_dir}  lang_codes={sorted(valid_langs)}")
+
 # ==== Group file paths by relation ====
-json_paths = glob.glob("cm_klar/*/*.json")
+json_paths = glob.glob(f"{args.data_dir}/*/*.json")
 path_map = defaultdict(dict)
 
 for path in json_paths:
@@ -94,15 +121,15 @@ dataset = Dataset.from_list(samples)
 llm = LLM(
     model=model_name,
     trust_remote_code=True,
-    gpu_memory_utilization=0.9,
+    gpu_memory_utilization=0.25,
     max_model_len=4096,
     max_num_seqs=16
 )
 
 # ==== Guided JSON schema ====
 # The model outputs a two-field JSON in a single call:
-#   "translation" — English rendering of the Hindi question (for logging only)
-#   "answer"      — Hindi answer in Devanagari, selected from object_candidates
+#   "translation" — {TARGET_LANG} rendering of the {SOURCE_LANG} question (for logging only)
+#   "answer"      — {SOURCE_LANG} answer in {SOURCE_SCRIPT}, selected from object_candidates
 GUIDED_JSON_SCHEMA = {
     "type": "object",
     "properties": {
@@ -239,15 +266,17 @@ def evaluate(llm, dataset, max_new_tokens=10, n_shot=3):
         key = (ex.get("relation"), ex.get("language"))
         candidates_by_key[key].append((i, ex))
 
-    # System-level instruction for the single combined call
     base_prompt = (
-        "You are a multilingual assistant. For each Hindi question, output a JSON object with exactly two fields:\n"
-        "  \"translation\": the English translation of the Hindi question (for reference only),\n"
-        "  \"answer\": the correct answer in Hindi Devanagari script, chosen from the provided candidates.\n\n"
+        f"You are answering factual questions written in {SOURCE_LANG} ({SOURCE_SCRIPT} script).\n"
+        f"Step 1 (internal only): Mentally translate the {SOURCE_LANG} question into {TARGET_LANG} "
+        f"to understand it clearly.\n"
+        "Step 2: Based on your understanding, output a JSON object with exactly two fields:\n"
+        f"  \"translation\": the {TARGET_LANG} translation of the question,\n"
+        f"  \"answer\": the correct answer in {SOURCE_LANG} {SOURCE_SCRIPT} script, chosen from the provided candidates.\n\n"
         "Rules:\n"
         "- The answer MUST be one of the listed candidates.\n"
-        "- The answer MUST be written in Hindi Devanagari script only.\n"
-        "- Do NOT use English in the answer field.\n\n"
+        f"- The answer MUST be written in {SOURCE_LANG} {SOURCE_SCRIPT} script only.\n"
+        f"- Do NOT use {TARGET_LANG} in the answer field.\n\n"
     )
 
     print(f"\n[Evaluating {len(test_data)} examples with {n_shot}-shot prompts]")
@@ -282,48 +311,59 @@ def evaluate(llm, dataset, max_new_tokens=10, n_shot=3):
 
         # ---- Build single-call few-shot prompt ----
         # Few-shot demos illustrate the JSON output format.
-        # Each demo shows a Hindi question + candidates → JSON with translation + Hindi answer.
+        # Each demo shows a {SOURCE_LANG} question + candidates → JSON with translation + {SOURCE_LANG} answer.
         prompt = base_prompt
         for d in demonstrations:
             demo_question = d["template"].replace("<subject>", d["subject"]).replace("<mask>", "").strip()
             demo_candidates = parse_candidates(d.get("object_candidates"))
             demo_cands_str = ", ".join(demo_candidates) if demo_candidates else d["object"]
             prompt += (
-                f"Q (Hindi): {demo_question}\n"
+                f"Q: {demo_question}\n"
                 f"Candidates: {demo_cands_str}\n"
-                # f"Output: {{\"translation\": \"(English translation)\", \"answer\": \"{d['object']}\"}}\n\n"
-                f"Output: {{\"translation\": \"What is the {d['relation'].replace('_', ' ')} of {d['subject']}?\", \"answer\": \"{d['object']}\"}}\n\n"
+                f"Output: {{\"answer\": \"{d['object']}\"}}\n\n"
             )
+            # prompt += (
+            #     f"Q ({SOURCE_LANG}): {demo_question}\n"
+            #     f"Candidates: {demo_cands_str}\n"
+            #     # f"Output: {{\"translation\": \"({TARGET_LANG} translation)\", \"answer\": \"{d['object']}\"}}\n\n"
+            #     f"Output: {{\"translation\": \"What is the {d['relation'].replace('_', ' ')} of {d['subject']}?\", \"answer\": \"{d['object']}\"}}\n\n"
+            # )
 
         # ---- Test question (always with candidates) ----
         test_question = ex["template"].replace("<subject>", ex["subject"]).replace("<mask>", "").strip()
         candidates_str = ", ".join(object_candidates) if object_candidates else ""
 
+        # prompt += (
+        #     # f"Q ({SOURCE_LANG}): {test_question}\n"
+        #     f"Candidates: {candidates_str}\n"
+        #     f"Output:"
+        # )
         prompt += (
-            f"Q (Hindi): {test_question}\n"
+            f"Q: {test_question}\n"
             f"Candidates: {candidates_str}\n"
             f"Output:"
         )
 
+
         prompts.append(prompt)
-        prompt_metadata.append((ex, lang, index, object_candidates))
+        prompt_metadata.append((ex, lang, index, object_candidates, prompt))
 
         if len(prompts) == batch_size or idx == len(test_data) - 1:
             outputs = llm.generate(prompts, sampling_params)
 
             for i, output in enumerate(outputs):
-                ex, lang, index, object_candidates = prompt_metadata[i]
+                ex, lang, index, object_candidates, final_prompt = prompt_metadata[i]
                 raw_prediction = output.outputs[0].text
 
                 target   = ex["object"].strip()
                 question = ex["template"].replace("<subject>", ex["subject"]).replace("<mask>", "").strip()
 
                 # ---- Parse the single JSON output ----
-                english_question, prediction = parse_json_output(raw_prediction)
-                # prediction = the "answer" field (Hindi Devanagari)
-                # english_question = the "translation" field (logged only)
+                tgt_question, prediction = parse_json_output(raw_prediction)
+                # prediction   = the "answer" field ({SOURCE_LANG} {SOURCE_SCRIPT})
+                # tgt_question = the "translation" field ({TARGET_LANG}, logged only)
 
-                # ---- Candidate-aware matching on the Hindi answer ----
+                # ---- Candidate-aware matching on the {SOURCE_LANG} answer ----
                 if object_candidates:
                     match, matched_candidate = match_against_candidates(prediction, object_candidates, target)
                 else:
@@ -341,15 +381,16 @@ def evaluate(llm, dataset, max_new_tokens=10, n_shot=3):
                     "index":              index,
                     "relation":           relation,
                     "subject":            ex["subject"],
-                    "question_hindi":     question,
-                    "english_question":   english_question,   # from "translation" field (logging only)
-                    "model_prediction":   prediction,         # from "answer" field (Hindi Devanagari)
+                    f"question_{src_key}": question,
+                    f"{tgt_key}_question": tgt_question,    # from "translation" field (logging only)
+                    "model_prediction":   prediction,         # from "answer" field ({SOURCE_LANG} {SOURCE_SCRIPT})
                     "matched_candidate":  matched_candidate,
                     "object_candidates":  object_candidates if object_candidates else None,
                     "used_candidates":    bool(object_candidates),
                     "ground_truth":       target,
                     "is_correct":         bool(match),
-                    "raw_output":         raw_prediction
+                    "raw_output":         raw_prediction,
+                    "final_prompt":       final_prompt
                 }
 
                 detailed_results.append(result_entry)
@@ -362,12 +403,13 @@ def evaluate(llm, dataset, max_new_tokens=10, n_shot=3):
                     "current_example": {
                         "index":              index,
                         "subject":            ex["subject"],
-                        "question_hindi":     question,
-                        "english_question":   english_question,
+                        f"question_{src_key}": question,
+                        f"{tgt_key}_question": tgt_question,
                         "model_prediction":   prediction,
                         "matched_candidate":  matched_candidate,
                         "ground_truth":       target,
-                        "is_correct":         bool(match)
+                        "is_correct":         bool(match),
+                        "final_prompt":       final_prompt
                     },
                     "running_accuracy": f"{(correct_total/total_total)*100:.2f}%" if total_total > 0 else "0%",
                     "results_so_far":   detailed_results[-50:]
@@ -378,8 +420,8 @@ def evaluate(llm, dataset, max_new_tokens=10, n_shot=3):
 
                 status = "✅" if match else "❌"
                 print(f"\n{status} [{total_total}/{len(test_data)}] Subject: {ex['subject']}")
-                print(f"   Hindi Q:         {question}")
-                print(f"   Translation:     {english_question}")
+                print(f"   {SOURCE_LANG} Q:    {question}")
+                print(f"   {TARGET_LANG}:      {tgt_question}")
                 print(f"   Candidates:      {', '.join(object_candidates) if object_candidates else 'N/A (open gen)'}")
                 print(f"   Raw prediction:  {prediction}")
                 print(f"   Matched cand.:   {matched_candidate}")
