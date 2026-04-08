@@ -13,8 +13,14 @@ from tqdm import tqdm
 
 # ==== Argument parser ====
 parser = argparse.ArgumentParser()
-parser.add_argument("--model_name", type=str, default="meta-llama/Llama-3.2-1B")
+parser.add_argument("--model_name", type=str, default="Qwen/Qwen2.5-7B")
 parser.add_argument("--seed", type=int, default=12345)
+parser.add_argument(
+    "--lang_codes",
+    type=str,
+    required=True,
+    help="Comma-separated language codes, e.g. asm,ben,guj"
+)
 args = parser.parse_args()
 
 model_name = args.model_name
@@ -30,21 +36,18 @@ def set_seed(seed: int) -> None:
 set_seed(args.seed)
 
 # ==== Define valid languages and relations ====
-languages = {
-    # "meta-llama/Llama-3.2-1B": [ "en","hin","hinglish_dev"],
+# languages = {
+#     # "meta-llama/Llama-3.2-1B": [ "en","hin","hinglish_dev"],
+#     # "meta-llama/Llama-3.1-8B": ["en","hinglish_dev"],
+#     # "Qwen/Qwen2.5-7B": ["en","hinglish_dev"],
+#     # "meta-llama/Llama-3.1-8B": ["asm","asm-en","ben","bn-en","guj","guj-en","mal","mal-en","ori","ori-en","mar"],
+#     # "Qwen/Qwen2.5-7B": ["asm","asm-en","ben","bn-en","guj","guj-en","mal","mal-en","ori","ori-en","mar"],
+#     "google/gemma-7b": ["asm","asm-en","ben","bn-en","guj","guj-en","mal","mal-en","ori","ori-en","mar"],
 
-    "Qwen/Qwen2.5-0.5B":  ["hin"],
-    "Qwen/Qwen2.5-1.5B":  ["hin"],
-    "Qwen/Qwen2.5-3B":    ["hin"],
-    "meta-llama/Llama-3.2-1B": ["hin"],
-    "meta-llama/Llama-3.2-3B": ["hin"],
 
-
-    # "meta-llama/Llama-3.1-8B": ["hin"],
-    # "Qwen/Qwen2.5-7B": ["hin"],
-    # "meta-llama/Llama-2-7b-hf": ["hi","hinglish", "en", "bn-eng"], #["ca", "en", "es", "fr", "hu", "ja", "ko", "nl", "ru", "uk", "vi", "zh"],
-    # "bigscience/bloom-560m": ["hinglish"] #, "ca", "en", "es", "fr", "vi", "zh"]
-}
+#     # "meta-llama/Llama-2-7b-hf": ["hi","hinglish", "en", "bn-eng"], #["ca", "en", "es", "fr", "hu", "ja", "ko", "nl", "ru", "uk", "vi", "zh"],
+#     # "bigscience/bloom-560m": ["hinglish"] #, "ca", "en", "es", "fr", "vi", "zh"]
+# }
 relations = [
     "applies_to_jurisdiction", "capital", "capital_of", "continent", \
     "country_of_citizenship", "developer", "field_of_work", "headquarters_location", \
@@ -52,7 +55,8 @@ relations = [
     "manufacturer", "native_language", "occupation", "official_language", \
     "owned_by", "place_of_birth", "place_of_death","religion"
 ]
-valid_langs = set(languages[model_name])
+# valid_langs = set(languages[model_name])
+valid_langs = set(c.strip() for c in args.lang_codes.split(",") if c.strip())
 valid_rels = set(relations)
 
 # ====  Group file paths by relation ====
@@ -108,7 +112,7 @@ dataset = Dataset.from_list([apply_prompt(ex) for ex in samples])
 llm = LLM(
     model=model_name,
     trust_remote_code=True,
-    gpu_memory_utilization=0.9,   # you already bumped this to 0.9
+    gpu_memory_utilization=0.25,   # you already bumped this to 0.9
     max_model_len=4096,            # cap sequence length to save memory
     max_num_seqs=16                # max parallel sequences vLLM processes at once
 )
@@ -225,7 +229,9 @@ def evaluate(llm, dataset, max_new_tokens=10, n_shot=3, save_path="filter_knowns
     live_dir = os.path.join(OUTPUT_DIR, model_safe_name)
     os.makedirs(live_dir, exist_ok=True)
     live_path = os.path.join(live_dir, "LIVE.json")
-    detailed_path = os.path.join(live_dir, "detailed.json")
+
+    # Per-language detailed output dirs (created on demand)
+    lang_detailed_results = defaultdict(list)
 
     live_data = {"progress": "0/0", "percent": "0%", "current_example": None, "results_so_far": []}
     with open(live_path, "w", encoding="utf-8") as f:
@@ -286,6 +292,7 @@ def evaluate(llm, dataset, max_new_tokens=10, n_shot=3, save_path="filter_knowns
                     "final_prompt": few_shot_prompt
                 }
                 detailed_results.append(result_entry)
+                lang_detailed_results[lang].append(result_entry)
 
                 progress_pct = (total_total / len(test_data)) * 100
                 live_data = {
@@ -301,8 +308,24 @@ def evaluate(llm, dataset, max_new_tokens=10, n_shot=3, save_path="filter_knowns
             prompts = []
             prompt_metadata = []
 
-    with open(detailed_path, "w", encoding="utf-8") as f:
-        json.dump(detailed_results, f, indent=4, ensure_ascii=False)
+    # Save per-language detailed JSONs
+    for lang, lang_results in lang_detailed_results.items():
+        lang_dir = os.path.join(live_dir, lang)
+        os.makedirs(lang_dir, exist_ok=True)
+        lang_correct = sum(1 for r in lang_results if r["is_correct"])
+        lang_total = len(lang_results)
+        lang_acc = lang_correct / lang_total if lang_total > 0 else 0
+        lang_output = {
+            "language": lang,
+            "accuracy": f"{lang_acc:.2%}",
+            "correct": lang_correct,
+            "total": lang_total,
+            "results": lang_results
+        }
+        lang_detailed_path = os.path.join(lang_dir, "detailed.json")
+        with open(lang_detailed_path, "w", encoding="utf-8") as f:
+            json.dump(lang_output, f, indent=4, ensure_ascii=False)
+        print(f"💾 Saved {lang} detailed results → {lang_detailed_path}")
 
     live_data["status"] = "COMPLETED"
     with open(live_path, "w", encoding="utf-8") as f:
