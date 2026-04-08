@@ -17,11 +17,17 @@ import time
 OUTPUT_DIR = "filter_knowns-trans-hinglish-prompt-implicit-in-mind"
 # ======================================
 
-# ==== Argument parser ====
+# # ==== Argument parser ====
+
 parser = argparse.ArgumentParser()
 parser.add_argument("--model_name", type=str, default="meta-llama/Llama-3.1-8B")
 parser.add_argument("--seed", type=int, default=12345)
+parser.add_argument("--mode", type=str, default="hinglish",
+                    choices=["hinglish", "english", "native"])
+parser.add_argument("--lang", type=str, default="hin",
+                    help="Language code, e.g. hin, guj, ben")
 args = parser.parse_args()
+
 
 model_name = args.model_name
 
@@ -34,17 +40,34 @@ def set_seed(seed: int) -> None:
 
 set_seed(args.seed)
 
-# ==== Define valid languages and relations ====
-languages = {
-    # "meta-llama/Llama-3.2-1B": ["hin"],
-    "Qwen/Qwen2.5-0.5B":  ["hin"],
-    "Qwen/Qwen2.5-1.5B":  ["hin"],
-    "Qwen/Qwen2.5-3B":    ["hin"],
-    "meta-llama/Llama-3.2-1B": ["hin"],
-    "meta-llama/Llama-3.2-3B": ["hin"],
-    # "meta-llama/Llama-3.1-8B": ["hin"],
-    # "Qwen/Qwen2.5-7B": ["hin"],
-}
+
+def normalize_key(x: str) -> str:
+    return x.lower().replace(" ", "_")
+
+def load_language_config(lang_code: str) -> dict:
+    config_path = f"configs/lang/{lang_code}.json"
+
+    if not os.path.exists(config_path):
+        raise ValueError(f"No config found for language: {lang_code}")
+
+    with open(config_path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+def resolve_language_config(lang_code: str, mode: str) -> dict:
+    base = load_language_config(lang_code)
+
+    if mode == "english":
+        base["target_lang"]   = "English"
+        base["target_script"] = "Latin"
+    elif mode == "native":
+        base["target_lang"]   = base["source_lang"]
+        base["target_script"] = base["source_script"]
+
+    return base
+
+valid_langs = set([args.lang])
+
+
 relations = [
     "applies_to_jurisdiction", "capital", "capital_of", "continent",
     "country_of_citizenship", "developer", "field_of_work", "headquarters_location",
@@ -52,7 +75,8 @@ relations = [
     "manufacturer", "native_language", "occupation", "official_language",
     "owned_by", "place_of_birth", "place_of_death", "religion"
 ]
-valid_langs = set(languages[model_name])
+# valid_langs = set(languages[model_name])
+# valid_langs = set([args.lang])
 valid_rels = set(relations)
 
 # ==== Group file paths by relation ====
@@ -94,7 +118,7 @@ dataset = Dataset.from_list(samples)
 llm = LLM(
     model=model_name,
     trust_remote_code=True,
-    gpu_memory_utilization=0.9,
+    gpu_memory_utilization=0.25,
     max_model_len=4096,
     max_num_seqs=16
 )
@@ -209,36 +233,6 @@ def parse_json_output(raw_text: str) -> str:
         return raw_text.strip()
 
 
-# ==== Hinglish translation helper ====
-# Instead of asking the LLM to generate the translation, we provide a
-# pre-built Hinglish form of the question in the prompt context.
-# This is a lightweight approximation: keep grammar particles in Roman,
-# replace content words with English equivalents.
-# The subject is already in English/Roman in the KLAR data, so we only
-# need to map the relation-specific Hindi phrasing.
-RELATION_HINGLISH_TEMPLATES = {
-    "applies_to_jurisdiction":    "{subject} ko kis desh mein legal term ke roop mein maana jaata hai?",
-    "capital":                    "{subject} ki capital kya hai?",
-    "capital_of":                 "{subject} kis desh ki capital hai?",
-    "continent":                  "{subject} kis continent mein sthit hai?",
-    "country_of_citizenship":     "{subject} ki citizenship kahan ki hai?",
-    "developer":                  "{subject} ka developer kaun hai?",
-    "field_of_work":              "{subject} ka field of work kya hai?",
-    "headquarters_location":      "{subject} ka headquarters kahan sthit hai?",
-    "instrument":                 "{subject} kaun sa instrument bajata hai?",
-    "language_of_work_or_name":   "{subject} ki language of work ya name kya hai?",
-    "languages_spoken":           "{subject} kaun si languages bolta/bolti hai?",
-    "location_of_formation":      "{subject} ka formation kahan hua tha?",
-    "manufacturer":               "{subject} ka manufacturer kaun hai?",
-    "native_language":            "{subject} ki native language kya hai?",
-    "occupation":                 "{subject} ka occupation kya hai?",
-    "official_language":          "{subject} ki official language kya hai?",
-    "owned_by":                   "{subject} ka owner kaun hai?",
-    "place_of_birth":             "{subject} ka place of birth kahan hai?",
-    "place_of_death":             "{subject} ki death kahan hui thi?",
-    "religion":                   "{subject} ka religion kya hai?",
-}
-
 def build_hinglish_translation(subject: str, relation: str) -> str:
     """
     Build a Hinglish approximation of the Hindi question using static templates.
@@ -252,21 +246,19 @@ def build_hinglish_translation(subject: str, relation: str) -> str:
     return f"{subject} ka {rel_words} kya hai?"
 
 
-# ==== Static preamble ====
-# The model is instructed to perform implicit Hinglish translation as an internal
-# mental step — it mentally converts the Hindi question to Hinglish to understand it,
-# but NEVER outputs the translation. The JSON schema enforces only {"answer": "..."}.
-SYSTEM_PREAMBLE = (
-    "You are answering factual questions written in Hindi (Devanagari script).\n"
-    "Step 1 (internal only): Mentally translate the Hindi question into Hinglish "
-    "(Hindi grammar + English content words) to understand it clearly. "
-    "Do NOT write this translation in your output.\n"
-    "Step 2: Based on your understanding, output ONLY a JSON object with a single field:\n"
-    "  \"answer\": the correct answer chosen from the provided candidates.\n\n"
-    "Rules:\n"
-    "- The answer MUST be one of the listed candidates.\n"
-    "- Do NOT write the Hinglish translation or any explanation in your output — only the JSON.\n\n"
-)
+
+def build_system_preamble(lang_cfg: dict) -> str:
+    return (
+        f"You are answering factual questions written in {lang_cfg['source_lang']} ({lang_cfg['source_script']} script).\n"
+        f"Step 1 (internal only): Mentally translate the {lang_cfg['source_lang']} question into {lang_cfg['target_lang']} "
+        f"({lang_cfg['source_lang']} grammar + English content words) to understand it clearly. "
+        f"Do NOT write this translation in your output.\n"
+        "Step 2: Based on your understanding, output ONLY a JSON object with a single field:\n"
+        "  \"answer\": the correct answer chosen from the provided candidates.\n\n"
+        "Rules:\n"
+        "- The answer MUST be one of the listed candidates.\n"
+        f"- Do NOT write the {lang_cfg['target_lang']} translation or any explanation in your output — only the JSON.\n\n"
+    )
 
 
 # ==== Evaluation ====
@@ -276,6 +268,12 @@ def evaluate(llm, dataset, max_new_tokens=10, n_shot=3):
     total_total = 0
     per_lang_results = defaultdict(lambda: {"correct": 0, "total": 0, "correct_indices": []})
     detailed_results = []
+ # ==== Resolve language config for dynamic field names ====
+    lang_code = list(valid_langs)[0]
+    lang_cfg  = resolve_language_config(lang_code, args.mode)
+    tgt_key   = normalize_key(lang_cfg["target_lang"]) + "_question"
+    SYSTEM_PREAMBLE = build_system_preamble(lang_cfg)
+    # e.g. "hinglish_question", "english_question", "native_question"
 
     model_safe_name = model_name.replace("/", "_")
     lang_name = list(valid_langs)[0]
@@ -321,11 +319,7 @@ def evaluate(llm, dataset, max_new_tokens=10, n_shot=3):
 
         object_candidates = parse_candidates(ex.get("object_candidates"))
 
-        # ---- Build single-call few-shot prompt ----
-        # Structure:
-        #   [SYSTEM_PREAMBLE]    ← explains Hinglish concept, task instructions
-        #   [n-shot QA demos]    ← each demo shows: Hindi Q + Hinglish (as context) + answer JSON
-        #   [test question]      ← Hindi Q + Hinglish (as context) + candidates → model outputs {"answer": ...}
+
 
         prompt = SYSTEM_PREAMBLE
 
@@ -344,7 +338,6 @@ def evaluate(llm, dataset, max_new_tokens=10, n_shot=3):
 
         # ---- Test question (always with candidates) ----
         test_question = ex["template"].replace("<subject>", ex["subject"]).replace("<mask>", "").strip()
-        test_hinglish = build_hinglish_translation(ex["subject"], relation)  # for logging only
         candidates_str = ", ".join(object_candidates) if object_candidates else ""
 
         # Only the Hindi question and candidates are shown — no Hinglish in prompt.
@@ -356,13 +349,13 @@ def evaluate(llm, dataset, max_new_tokens=10, n_shot=3):
 
         prompts.append(prompt)
         # Store the pre-built hinglish alongside other metadata for logging
-        prompt_metadata.append((ex, lang, index, object_candidates, prompt, test_hinglish))
+        prompt_metadata.append((ex, lang, index, object_candidates, prompt))
 
         if len(prompts) == batch_size or idx == len(test_data) - 1:
             outputs = llm.generate(prompts, sampling_params)
 
             for i, output in enumerate(outputs):
-                ex, lang, index, object_candidates, final_prompt, hinglish_question = prompt_metadata[i]
+                ex, lang, index, object_candidates, final_prompt= prompt_metadata[i]
                 raw_prediction = output.outputs[0].text
 
                 target   = ex["object"].strip()
@@ -389,8 +382,7 @@ def evaluate(llm, dataset, max_new_tokens=10, n_shot=3):
                     "index":              index,
                     "relation":           relation,
                     "subject":            ex["subject"],
-                    "question_hindi":     question,
-                    "hinglish_question":  hinglish_question,  # pre-built, provided as context (not generated)
+                    normalize_key(lang_cfg["source_lang"]) + "_question": question,
                     "model_prediction":   prediction,         # from "answer" field (Hindi Devanagari)
                     "matched_candidate":  matched_candidate,
                     "object_candidates":  object_candidates if object_candidates else None,
@@ -411,8 +403,8 @@ def evaluate(llm, dataset, max_new_tokens=10, n_shot=3):
                     "current_example": {
                         "index":              index,
                         "subject":            ex["subject"],
-                        "question_hindi":     question,
-                        "hinglish_question":  hinglish_question,
+                        # "question_hindi":     question,
+                        normalize_key(lang_cfg["source_lang"]) + "_question": question,
                         "model_prediction":   prediction,
                         "matched_candidate":  matched_candidate,
                         "ground_truth":       target,
@@ -427,8 +419,8 @@ def evaluate(llm, dataset, max_new_tokens=10, n_shot=3):
 
                 status = "✅" if match else "❌"
                 print(f"\n{status} [{total_total}/{len(test_data)}] Subject: {ex['subject']}")
-                print(f"   Hindi Q:         {question}")
-                print(f"   Hinglish (ctx):  {hinglish_question}")
+                # print(f"   Hindi Q:         {question}")
+                print(f"   {lang_cfg['source_lang']} Q:  {question}")
                 print(f"   Candidates:      {', '.join(object_candidates) if object_candidates else 'N/A (open gen)'}")
                 print(f"   Raw prediction:  {prediction}")
                 print(f"   Matched cand.:   {matched_candidate}")
