@@ -14,7 +14,7 @@ from tqdm import tqdm
 import time
 
 # ==== CONFIGURATION - SET THIS ONCE ====
-OUTPUT_DIR      = "filter_knowns_implicit-trans-hinglish"
+OUTPUT_DIR      = "1_Call_CM"
 DATA_DIR        = "cm_klar"
 DICTIONARY_PATH = None   # e.g. "dicts/hin_eng_dict.json" or None to disable
 # ======================================
