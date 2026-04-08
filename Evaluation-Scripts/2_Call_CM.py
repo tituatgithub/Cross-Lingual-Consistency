@@ -24,7 +24,7 @@ def load_language_config(lang_code: str) -> dict:
         return json.load(f)
 
 # ==== CONFIGURATION - SET THIS ONCE ====
-OUTPUT_DIR      = "filter_knowns_implicit-trans-hinglish"
+OUTPUT_DIR      = "2_call_CM"
 DATA_DIR        = "cm_klar"
 DICTIONARY_PATH = None   # e.g. "dicts/hin_eng_dict.json" or None to disable
 # ======================================
