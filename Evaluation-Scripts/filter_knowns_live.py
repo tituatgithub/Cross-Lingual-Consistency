@@ -112,7 +112,7 @@ dataset = Dataset.from_list([apply_prompt(ex) for ex in samples])
 llm = LLM(
     model=model_name,
     trust_remote_code=True,
-    gpu_memory_utilization=0.25,   # you already bumped this to 0.9
+    gpu_memory_utilization=0.20,   # you already bumped this to 0.9
     max_model_len=4096,            # cap sequence length to save memory
     max_num_seqs=16                # max parallel sequences vLLM processes at once
 )
@@ -134,9 +134,9 @@ def overlapping_ratio(list1, list2):
     return len(intersection) / len(union) if union else 0
 
 
-OUTPUT_DIR = "Baseline_filter_knowns"  # ← add this near the top of the file
+OUTPUT_DIR = "filter_knowns_live_baseline"  # ← add this near the top of the file
 
-def evaluate(llm, dataset, max_new_tokens=10, n_shot=3, save_path="filter_knowns/results.json"):
+def evaluate(llm, dataset, max_new_tokens=10, n_shot=3, save_path="filter_knowns_live_baseline/results.json"):
     test_data = list(dataset)
     correct_total = 0
     total_total = 0
@@ -167,7 +167,7 @@ def evaluate(llm, dataset, max_new_tokens=10, n_shot=3, save_path="filter_knowns
 
     prompts = []
     prompt_metadata = []
-    batch_size = 1
+    batch_size = 8
 
     for idx, ex in enumerate(tqdm(test_data)):
         lang = ex.get("language", "unknown")
