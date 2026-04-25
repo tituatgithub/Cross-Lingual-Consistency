@@ -14,7 +14,7 @@ from tqdm import tqdm
 import time
 
 # ==== CONFIGURATION - SET THIS ONCE ====
-OUTPUT_DIR      = "1_Call_CM"
+OUTPUT_DIR      = "1_call_cm_placeholder_corr"
 DATA_DIR        = "cm_klar"
 DICTIONARY_PATH = None   # e.g. "dicts/hin_eng_dict.json" or None to disable
 # ======================================
@@ -131,7 +131,7 @@ print(f"[Dataset] Loaded {len(samples)} samples across {len(path_map)} relations
 llm = LLM(
     model=model_name,
     trust_remote_code=True,
-    gpu_memory_utilization=0.25,
+    gpu_memory_utilization=0.20,
     max_model_len=4096,
     max_num_seqs=16
 )
@@ -269,17 +269,75 @@ def evaluate(llm, dataset, max_new_tokens=10, n_shot=3):
         )
 
 
+    # base_prompt = (
+    #     f"You are answering factual questions written in {SOURCE_LANG} ({SOURCE_SCRIPT} script).\n"
+    #     f"Step 1 (internal only): Mentally translate the {SOURCE_LANG} question into {TARGET_LANG} "
+    #     f"({SOURCE_LANG} grammar + English content words in Roman script) to understand it clearly.\n"
+    #     "Step 2: Based on your understanding, output a JSON object with exactly two fields:\n"
+    #     f"  \"translation\": the {TARGET_LANG} translation of the question,\n"
+    #     f"  \"answer\": the correct answer in {SOURCE_SCRIPT} script, chosen from the provided candidates.\n\n"
+    #     "Rules:\n"
+    #     "- The answer MUST be one of the listed candidates.\n"
+    #     f"- The answer MUST be written in {SOURCE_SCRIPT} script only.\n"
+    #     f"- Do NOT use English in the answer field.\n"
+    #     f"{dict_hint}\n"
+    # )
+    # base_prompt = (
+    #     f"You are answering factual questions written in {SOURCE_LANG} ({SOURCE_SCRIPT} script).\n"
+    #     f"First, translate the {SOURCE_LANG} question into {TARGET_LANG} "
+    #     f"({SOURCE_LANG} grammar + English content words in Roman script).\n"
+    #     f"Then answer based on that understanding.\n\n"
+    #     "Output a JSON object with exactly two fields:\n"
+    #     f"  \"translation\": the {TARGET_LANG} translation (Roman script, mixed {SOURCE_LANG}+English),\n"
+    #     f"  \"answer\": the correct answer in {SOURCE_SCRIPT} script, chosen from candidates.\n\n"
+    #     "Rules:\n"
+    #     f"- The translation MUST use {SOURCE_LANG} grammar with English content words\n"
+    #     f"- The translation MUST be in Roman/Latin script (not {SOURCE_SCRIPT})\n"
+    #     "- The answer MUST be one of the listed candidates\n"
+    #     f"- The answer MUST be in {SOURCE_SCRIPT} script only\n"
+    #     f"{dict_hint}\n"
+    # )
+
     base_prompt = (
-        f"You are answering factual questions written in {SOURCE_LANG} ({SOURCE_SCRIPT} script).\n"
-        f"Step 1 (internal only): Mentally translate the {SOURCE_LANG} question into {TARGET_LANG} "
-        f"({SOURCE_LANG} grammar + English content words in Roman script) to understand it clearly.\n"
-        "Step 2: Based on your understanding, output a JSON object with exactly two fields:\n"
-        f"  \"translation\": the {TARGET_LANG} translation of the question,\n"
-        f"  \"answer\": the correct answer in {SOURCE_SCRIPT} script, chosen from the provided candidates.\n\n"
-        "Rules:\n"
-        "- The answer MUST be one of the listed candidates.\n"
-        f"- The answer MUST be written in {SOURCE_SCRIPT} script only.\n"
-        f"- Do NOT use English in the answer field.\n"
+        f"You are answering factual questions written in {SOURCE_LANG} ({SOURCE_SCRIPT} script).\n\n"
+
+        f"You MUST perform TWO steps in ONE response:\n"
+        f"1. Convert the question into {TARGET_LANG} (code-mixed form)\n"
+        f"2. Provide the correct answer\n\n"
+
+        f"STEP 1 — CODE-MIXED TRANSLATION (CRITICAL):\n"
+        f"- First convert the input into a romanized version preserving ALL words\n"
+        f"- Then replace ONLY a few content words (nouns, main verbs, adjectives) with English\n"
+        f"- Keep function words (question words, particles, auxiliaries, postpositions) unchanged\n"
+        f"- Preserve word order exactly\n"
+        f"- DO NOT rewrite or paraphrase\n\n"
+
+        f"ILLUSTRATION:\n"
+        f"Input: Bharat ki rajdhani kya hai?\n"
+        f"Romanized: Bharat ki rajdhani kya hai?\n"
+        f"Code-mixed: Bharat ki capital kya hai?\n\n"
+
+        f"RULES FOR TRANSLATION:\n"
+        f"- The translation MUST NOT be a fluent English sentence\n"
+        f"- The translation MUST NOT be a full translation\n"
+        f"- The translation MUST preserve structure of the original sentence\n"
+        f"- At least 50% of the words must remain from the original (after romanization)\n"
+        f"- Do NOT convert into known English question templates\n\n"
+
+        f"STEP 2 — ANSWERING:\n"
+        f"- Answer based on the meaning of the question\n"
+        f"- The answer MUST be consistent with the generated translation\n"
+        f"- Both translation and answer must reflect the same interpretation\n"
+        f"- Answer MUST be one of the candidates\n"
+        f"- Answer MUST be in {SOURCE_SCRIPT} script only\n"
+        f"- Do NOT use English in the answer\n\n"
+
+        f"OUTPUT FORMAT (STRICT):\n"
+        f"{{\n"
+        f"  \"translation\": \"<code-mixed question in Roman script>\",\n"
+        f"  \"answer\": \"<answer in {SOURCE_SCRIPT} script>\"\n"
+        f"}}\n\n"
+
         f"{dict_hint}\n"
     )
 
@@ -289,7 +347,7 @@ def evaluate(llm, dataset, max_new_tokens=10, n_shot=3):
 
     prompts         = []
     prompt_metadata = []
-    batch_size      = 1
+    batch_size      = 8
 
     live_data = {
         "progress":        "0/0",
