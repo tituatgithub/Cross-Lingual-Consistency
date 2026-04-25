@@ -14,7 +14,7 @@ from tqdm import tqdm
 import time
 
 # ==== CONFIGURATION - SET THIS ONCE ====
-OUTPUT_DIR = "2_Call_EN"
+OUTPUT_DIR = "2_call_en_placeholder_corr_final"
 # ======================================
 
 # ==== Argument parser ====
@@ -124,7 +124,7 @@ dataset = Dataset.from_list(samples)
 llm = LLM(
     model=model_name,
     trust_remote_code=True,
-    gpu_memory_utilization=0.25,
+    gpu_memory_utilization=0.20,
     max_model_len=4096,
     max_num_seqs=16
 )
@@ -290,7 +290,7 @@ def evaluate(llm, dataset, max_new_tokens=10, n_shot=3):
     print(f"📁 Output directory: {output_subdir}")
     print(f"💡 Tip: Run 'tail -f {live_path}' in another terminal to watch progress\n")
 
-    batch_size = 1
+    batch_size = 8
 
     live_data = {
         "progress": "0/0",
