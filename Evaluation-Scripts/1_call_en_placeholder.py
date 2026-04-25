@@ -14,7 +14,7 @@ from tqdm import tqdm
 import time
 
 # ==== CONFIGURATION - SET THIS ONCE ====
-OUTPUT_DIR = "1_call_en_placeholder_corr_final"
+OUTPUT_DIR = "1_call_en_placeholder_corr"
 # ======================================
 
 # ==== Argument parser ====
