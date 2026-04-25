@@ -102,7 +102,7 @@ dataset = Dataset.from_list([apply_prompt(ex) for ex in samples])
 llm = LLM(
     model=model_name,
     trust_remote_code=True,
-    gpu_memory_utilization=0.35,
+    gpu_memory_utilization=0.20,
     max_model_len=4096,
     max_num_seqs=16
 )
@@ -154,9 +154,9 @@ def match_against_candidates(prediction, candidates, target):
     return is_correct, prediction
 
 # ==== Output directory ====
-OUTPUT_DIR = "Baseline_with_opt"
+OUTPUT_DIR = "filter_knowns_live_with_obj_baseline"
 
-def evaluate(llm, dataset, max_new_tokens=10, n_shot=3, save_path="filter_knowns/results.json"):
+def evaluate(llm, dataset, max_new_tokens=10, n_shot=3, save_path="filter_knowns_live_with_obj_baseline/results.json"):
     test_data = list(dataset)
     correct_total = 0
     total_total = 0
@@ -187,7 +187,7 @@ def evaluate(llm, dataset, max_new_tokens=10, n_shot=3, save_path="filter_knowns
 
     prompts = []
     prompt_metadata = []
-    batch_size = 32
+    batch_size = 8
 
     for idx, ex in enumerate(tqdm(test_data)):
         lang = ex.get("language", "unknown")
