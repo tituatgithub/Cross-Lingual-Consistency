@@ -8,7 +8,7 @@
 #    2.  Baseline_filter_knowns_with_obj  (filter_knowns_live_obj.py)
 #    3.  Implicit_CM                      (1_call_pure_implicit_cm.py)
 #    4.  Implicit_EN                      (1_call_pure_implicit_en.py)
-#    5.  1_Call_CM                        (1_call_cm_placeholder_2.py)
+#    5.  1_Call_CM                        (1_call_cm_placeholder.py)
 #    6.  1_Call_EN                        (1_call_en_placeholder.py)
 #    7.  2_Call_CM                        (2_call_cm_placeholder_correct.py)
 #    8.  2_Call_EN                        (2_call_en_placeholder.py)
@@ -203,7 +203,7 @@ run_language() {
         run_script \
             "1_Call_CM | ${SOURCE_LANG} | ${MODEL}" \
             "$(logfile "$LANG_CODE" "1_Call_CM" "$MODEL")" \
-            ${SCRIPT_DIR}/1_call_cm_placeholder_2.py \
+            ${SCRIPT_DIR}/1_call_cm_placeholder.py \
                 --model_name    "$MODEL" \
                 --seed          "$SEED" \
                 --lang_code     "$LANG_CODE" \
