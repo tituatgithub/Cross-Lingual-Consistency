@@ -15,10 +15,11 @@ A research evaluation framework that tests how well large language models answer
    - [Run the Automation Script](#43-run-the-automation-script)
 5. [What Each File Does](#5-what-each-file-does)
 6. [How Results Are Saved](#6-how-results-are-saved)
-7. [Adding Models](#7-adding-models)
-8. [Using Hugging Face Model Names](#8-using-hugging-face-model-names)
-9. [Language & Script Reference](#9-language--script-reference)
-10. [Quick Troubleshooting](#10-quick-troubleshooting)
+7. [Computing CLC Scores After a Run](#7-computing-clc-scores-after-a-run)
+8. [Adding Models](#8-adding-models)
+9. [Using Hugging Face Model Names](#9-using-hugging-face-model-names)
+10. [Language & Script Reference](#10-language--script-reference)
+11. [Quick Troubleshooting](#11-quick-troubleshooting)[Quick Troubleshooting](#10-quick-troubleshooting)
 
 ---
 
@@ -393,7 +394,79 @@ logs/<lang_code>/<script_tag>__<model_name>__<timestamp>.log
 
 ---
 
-## 7. Adding Models
+## 7. Computing CLC Scores After a Run
+
+After `automation.sh` finishes, run the CLC computation step to produce
+consolidated Cross-Lingual Consistency scores for every model across all
+prompting settings.
+
+Two files handle this:
+
+| File | Role |
+|---|---|
+| `compute_clc.py` | Core logic — loads `detailed.json` files, computes CLC, writes output |
+| `run_clc_all.sh` | Runner — calls `compute_clc.py` for all 9 output directories in one go |
+
+### Run it
+
+```bash
+# All 9 prompting settings at once
+bash run_clc_all.sh
+
+# All settings, also print per-pair scores to terminal
+bash run_clc_all.sh --verbose
+
+# One specific setting only
+bash run_clc_all.sh --dir 1_call_cm_placeholder_corr
+
+# Or call compute_clc.py directly
+python compute_clc.py
+python compute_clc.py --output_dir 2_call_transliteration --verbose
+```
+
+### What gets written
+
+For every `<output_dir>/<model_name>/` folder that has at least two language
+subdirectories, two files are created:
+
+**`clc_results.json`** — full machine-readable breakdown:
+
+```json
+{
+  "model_dir": "1_call_cm_placeholder_corr/google_gemma-3-270m",
+  "languages": ["ben", "hin", "tel"],
+  "overall_accuracy": 0.631,
+  "overall_clc": 0.574,
+  "per_language_accuracy": {
+    "ben": { "correct": 210, "total": 300, "accuracy": 0.700 },
+    "hin": { "correct": 195, "total": 300, "accuracy": 0.650 },
+    "tel": { "correct": 168, "total": 300, "accuracy": 0.560 }
+  },
+  "per_language_clc": {
+    "ben": 0.612,
+    "hin": 0.588,
+    "tel": 0.521
+  },
+  "pairwise_clc": {
+    "ben ↔ hin": 0.643,
+    "ben ↔ tel": 0.581,
+    "hin ↔ tel": 0.506
+  },
+  "per_relation_clc": {
+    "capital":        { "overall_clc": 0.82, "per_lang_clc": {}, "pairwise_clc": {} },
+    "place_of_birth": { "overall_clc": 0.61, "per_lang_clc": {}, "pairwise_clc": {} },
+    "occupation":     { "overall_clc": 0.39, "per_lang_clc": {}, "pairwise_clc": {} }
+  }
+}
+```
+
+**`clc_summary.txt`** — human-readable version of the same, suitable for
+pasting into notes or a paper.
+
+### CLC formula
+
+
+## 8. Adding Models
 
 ### In `automation.sh`
 
@@ -431,7 +504,7 @@ run_language_en
 
 ---
 
-## 8. Using Hugging Face Model Names
+## 9. Using Hugging Face Model Names
 
 **Yes, you can use direct Hugging Face Hub model IDs** — vLLM accepts them natively and will download the model automatically on first run.
 
@@ -480,7 +553,7 @@ vLLM will load from the local path directly — no internet required.
 
 ---
 
-## 9. Language & Script Reference
+## 10. Language & Script Reference
 
 | Lang code | Language | Script name (for `--source_script`) | CM target (for `--target_lang`) |
 |---|---|---|---|
@@ -499,7 +572,7 @@ The `-en` suffix variants (e.g. `hin-en`, `ben-en`) are subdirectories in `cm_kl
 
 ---
 
-## 10. Quick Troubleshooting
+## 11. Quick Troubleshooting
 
 **`cuda out of memory`**
 Lower `gpu_memory_utilization` in the relevant `.py` script (e.g. from `0.45` to `0.20`), or reduce `max_num_seqs`.
