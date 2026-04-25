@@ -24,7 +24,7 @@ def load_language_config(lang_code: str) -> dict:
         return json.load(f)
 
 # ==== CONFIGURATION - SET THIS ONCE ====
-OUTPUT_DIR      = "2_Call_CM"
+OUTPUT_DIR      = "2_call_cm_placeholder_corr_8"
 DATA_DIR        = "cm_klar"
 DICTIONARY_PATH = None   # e.g. "dicts/hin_eng_dict.json" or None to disable
 # ======================================
@@ -134,7 +134,7 @@ print(f"[Dataset] Loaded {len(samples)} samples across {len(path_map)} relations
 llm = LLM(
     model=model_name,
     trust_remote_code=True,
-    gpu_memory_utilization=0.25,
+    gpu_memory_utilization=0.20,
     max_model_len=4096,
     max_num_seqs=16
 )
@@ -275,14 +275,328 @@ def evaluate(llm, dataset, max_new_tokens=10, n_shot=3):
             + "\n"
         )
 
+    # stage1_base_prompt = (
+    #     f"You are a translator. Convert this {SOURCE_LANG} ({SOURCE_SCRIPT} script) question "
+    #     f"into {TARGET_LANG} ({SOURCE_LANG} grammar + English content words in Roman/Latin script).\n\n"
+    #     f"Rules:\n"
+    #     f"- Preserve {SOURCE_LANG} sentence structure and grammar markers\n"
+    #     f"- Replace only content words (nouns, verbs, adjectives) with English equivalents\n"
+    #     f"- Write output in Roman/Latin script only\n"
+    #     f"- Output ONLY: {{\"translation\": \"...\"}}\n\n"
+    #     f"{dict_hint_stage1}"
+    # )
+    # stage1_base_prompt = (
+    #     f"You are a translator. Convert this {SOURCE_LANG} ({SOURCE_SCRIPT} script) question "
+    #     f"into {TARGET_LANG} ({SOURCE_LANG} grammar + English content words in Roman/Latin script).\n\n"
+    #     f"CRITICAL INSTRUCTIONS:\n"
+    #     f"1. Keep ALL {SOURCE_LANG} function words (question words, postpositions, auxiliaries, particles) in Romanized form\n"
+    #     f"2. Replace ONLY content words (nouns, main verbs, adjectives) with English equivalents\n"
+    #     f"3. Maintain {SOURCE_LANG} word order exactly - do NOT rearrange to English word order\n"
+    #     f"4. The output should read like {SOURCE_LANG} sentence structure with English vocabulary mixed in\n"
+    #     f"5. Write output in Roman/Latin script only\n"
+    #     f"6. Output ONLY: {{\"translation\": \"...\"}}\n\n"
+    #     f"{dict_hint_stage1}"
+    # )
+#     stage1_base_prompt = (
+#     f"You are a STRICT translator performing code-mixing.\n\n"
+
+#     f"Convert this {SOURCE_LANG} ({SOURCE_SCRIPT} script) question into {TARGET_LANG} "
+#     f"({SOURCE_LANG} grammar + English content words in Roman/Latin script).\n\n"
+
+#     f"DEFINITION OF CODE-MIXING (FOLLOW EXACTLY):\n"
+#     f"1. Keep ALL {SOURCE_LANG} function words (question words, postpositions, auxiliaries, particles) in Romanized form\n"
+#     f"2. Replace ONLY content words (nouns, main verbs, adjectives) with English equivalents\n"
+#     f"3. Maintain {SOURCE_LANG} word order exactly - do NOT rearrange to English word order\n"
+#     f"4. The output MUST be a MIX of {SOURCE_LANG} grammar and English words (not fully English, not fully {SOURCE_LANG})\n\n"
+
+#     f"STRICT CONSTRAINTS:\n"
+#     f"- This is NOT a question-answering task\n"
+#     f"- DO NOT answer the question\n"
+#     f"- DO NOT add any new information\n"
+#     f"- DO NOT introduce any entities (places, names, answers) not present in the input\n"
+#     f"- The output MUST remain a QUESTION\n"
+#     f"- Do NOT convert the question into a statement\n\n"
+
+#     f"SCRIPT RULES:\n"
+#     f"- Write output in Roman/Latin script only\n"
+#     f"- Do NOT use {SOURCE_SCRIPT} script\n\n"
+
+#     f"OUTPUT FORMAT:\n"
+#     f"{{\"translation\": \"<code-mixed question>\"}}\n\n"
+
+#     f"{dict_hint_stage1}"
+# )
+
+
+    # stage1_base_prompt = (
+    #     f"You are a STRICT translator performing code-mixing.\n\n"
+
+    #     f"Convert this {SOURCE_LANG} ({SOURCE_SCRIPT} script) question into {TARGET_LANG} "
+    #     f"({SOURCE_LANG} grammar + English content words in Roman/Latin script).\n\n"
+
+    #     f"DEFINITION OF CODE-MIXING (MANDATORY):\n"
+    #     f"- Keep function words from {SOURCE_LANG} (romanized)\n"
+    #     f"- Replace ONLY content words with English equivalents\n"
+    #     f"- Preserve original word order\n\n"
+
+    #     f"HARD CONSTRAINTS (MUST FOLLOW):\n"
+    #     f"- The output MUST contain at least ONE romanized {SOURCE_LANG} word\n"
+    #     f"- The output MUST contain at least ONE English word\n"
+    #     f"- The output MUST NOT be fully English\n"
+    #     f"- The output MUST NOT be fully {SOURCE_LANG}\n\n"
+
+    #     f"STRICT BEHAVIOR RULES:\n"
+    #     f"- This is NOT a question-answering task\n"
+    #     f"- DO NOT answer the question\n"
+    #     f"- DO NOT add any new information\n"
+    #     f"- DO NOT introduce any entities not present in the input\n"
+    #     f"- The output MUST remain a question\n\n"
+
+    #     f"SCRIPT RULES:\n"
+    #     f"- Output MUST be in Roman/Latin script only\n"
+    #     f"- Do NOT use {SOURCE_SCRIPT} script\n\n"
+
+    #     f"VALIDITY CHECK (VERY IMPORTANT):\n"
+    #     f"- If the output is fully English, it is WRONG\n"
+    #     f"- If the output does not contain {SOURCE_LANG} words, it is WRONG\n"
+    #     f"- If unsure, modify the output to include {SOURCE_LANG} words\n\n"
+
+    #     f"OUTPUT FORMAT:\n"
+    #     f"{{\"translation\": \"<code-mixed question>\"}}\n\n"
+
+    #     f"{dict_hint_stage1}"
+    # )
+
+    # stage1_base_prompt = (
+    #     f"You are a STRICT translator performing code-mixing.\n\n"
+
+    #     f"Convert this {SOURCE_LANG} ({SOURCE_SCRIPT} script) question into {TARGET_LANG} "
+    #     f"({SOURCE_LANG} grammar + English content words in Roman/Latin script).\n\n"
+
+    #     f"DEFINITION OF CODE-MIXING (MANDATORY):\n"
+    #     f"- Keep function words from {SOURCE_LANG} (romanized)\n"
+    #     f"- Replace ONLY content words with English equivalents\n"
+    #     f"- Preserve original word order\n\n"
+
+    #     f"HARD CONSTRAINTS (MUST FOLLOW):\n"
+    #     f"- The output MUST contain at least ONE romanized {SOURCE_LANG} function word\n"
+    #     f"- Example function words include: ki, kothay, kahan, kab, ke, er, ka (use equivalents appropriate to the language)\n"
+    #     f"- The output MUST contain at least ONE English word\n"
+    #     f"- The output MUST NOT be fully English\n"
+    #     f"- The output MUST NOT be fully {SOURCE_LANG}\n\n"
+
+    #     f"STRICT BEHAVIOR RULES:\n"
+    #     f"- This is NOT a question-answering task\n"
+    #     f"- DO NOT answer the question\n"
+    #     f"- DO NOT add any new information\n"
+    #     f"- DO NOT introduce any entities not present in the input\n"
+    #     f"- The output MUST remain a question\n"
+    #     f"- The output should look like a partial word-by-word transformation, NOT a fluent English sentence\n\n"
+
+    #     f"SCRIPT RULES:\n"
+    #     f"- Output MUST be in Roman/Latin script only\n"
+    #     f"- Do NOT use {SOURCE_SCRIPT} script\n\n"
+
+    #     f"VALIDITY CHECK (VERY IMPORTANT):\n"
+    #     f"- If the output is a fully fluent English sentence, it is INVALID\n"
+    #     f"- If the output does not contain any romanized {SOURCE_LANG} function word, it is INVALID\n"
+    #     f"- If invalid, modify the output to include {SOURCE_LANG} function words\n\n"
+
+    #     f"OUTPUT FORMAT:\n"
+    #     f"{{\"translation\": \"<code-mixed question>\"}}\n\n"
+
+    #     f"{dict_hint_stage1}"
+    # )
+
+    # stage1_base_prompt = (
+    #     f"You are a STRICT translator performing code-mixing.\n\n"
+
+    #     f"Convert this {SOURCE_LANG} ({SOURCE_SCRIPT} script) question into {TARGET_LANG} "
+    #     f"(Roman script) while preserving the original structure.\n\n"
+
+    #     f"DEFINITION OF CODE-MIXING (MANDATORY):\n"
+    #     f"- Do NOT fully translate the sentence\n"
+    #     f"- Keep parts of the original sentence structure unchanged (in romanized form)\n"
+    #     f"- Replace ONLY some content words with English equivalents\n"
+    #     f"- Preserve word order exactly\n\n"
+
+    #     f"HARD CONSTRAINTS (MUST FOLLOW):\n"
+    #     f"- The output MUST visibly resemble the original sentence structure\n"
+    #     f"- The output MUST NOT be a fully fluent English sentence\n"
+    #     f"- The output MUST be a partial transformation, not a full translation\n\n"
+
+    #     f"STRICT BEHAVIOR RULES:\n"
+    #     f"- This is NOT a question-answering task\n"
+    #     f"- DO NOT answer the question\n"
+    #     f"- DO NOT add any new information\n"
+    #     f"- DO NOT introduce any entities not present in the input\n"
+    #     f"- The output MUST remain a question\n"
+    #     f"- Do NOT rewrite the sentence into natural English\n\n"
+
+    #     f"SCRIPT RULES:\n"
+    #     f"- Output MUST be in Roman/Latin script only\n"
+    #     f"- Do NOT use {SOURCE_SCRIPT} script\n\n"
+
+    #     f"VALIDITY CHECK (VERY IMPORTANT):\n"
+    #     f"- If the output is a fluent English sentence, it is INVALID\n"
+    #     f"- If the output does not resemble the original sentence structure, it is INVALID\n"
+    #     f"- If invalid, modify it to keep parts of the original structure\n\n"
+    #     f"- The output MUST reuse parts of the input question (after romanization), not generate a completely new sentence\n"
+    #     f"CRITICAL STEP:\n"
+    #     f"- First convert the input into a romanized version preserving the original words\n"
+    #     f"- Then modify that romanized sentence by replacing some content words with English\n\n"
+
+    #     f"OUTPUT FORMAT:\n"
+    #     f"{{\"translation\": \"<code-mixed question>\"}}\n\n"
+
+    #     f"{dict_hint_stage1}"
+    # )
+
+    # stage1_base_prompt = (
+    #     f"You are a STRICT translator performing code-mixing.\n\n"
+
+    #     f"Convert this {SOURCE_LANG} ({SOURCE_SCRIPT} script) question into {TARGET_LANG} "
+    #     f"(Roman script) while preserving the original structure.\n\n"
+
+    #     f"DEFINITION OF CODE-MIXING (MANDATORY):\n"
+    #     f"- Do NOT fully translate the sentence\n"
+    #     f"- Keep parts of the original sentence structure unchanged (in romanized form)\n"
+    #     f"- Replace ONLY some content words with English equivalents\n"
+    #     f"- Preserve word order exactly\n\n"
+
+    #     f"CRITICAL TRANSFORMATION PROCESS:\n"
+    #     f"- First convert the input into a romanized version preserving original words\n"
+    #     f"- Then replace some content words (nouns, main verbs, adjectives) with English\n"
+    #     f"- Keep function words (question words, particles, auxiliaries, postpositions) unchanged\n\n"
+
+    #     f"ILLUSTRATION (Hinglish example):\n"
+    #     f"Input: Bharat ki rajdhani kya hai?\n"
+    #     f"Romanized: Bharat ki rajdhani kya hai?\n"
+    #     f"Code-mixed: Bharat ki capital kya hai?\n\n"
+
+    #     f"Explanation:\n"
+    #     f"- 'Bharat', 'ki', 'kya', 'hai' are function words or structural elements → kept unchanged\n"
+    #     f"- 'rajdhani' (a noun / content word) → replaced with 'capital'\n"
+    #     f"- Word order is unchanged\n"
+    #     f"- Sentence remains a question\n\n"
+
+    #     f"Apply the SAME logic to {SOURCE_LANG}:\n"
+    #     f"- Identify function words (question words, particles, auxiliaries, postpositions) → keep them (romanized)\n"
+    #     f"- Identify content words (nouns, main verbs, adjectives) → translate some into English\n"
+    #     f"- Preserve structure and word order exactly\n\n"
+
+    #     f"HARD CONSTRAINTS (MUST FOLLOW):\n"
+    #     f"- The output MUST visibly resemble the original sentence structure\n"
+    #     f"- The output MUST NOT be a fully fluent English sentence\n"
+    #     f"- The output MUST be a partial transformation, not a full translation\n\n"
+
+    #     f"STRICT BEHAVIOR RULES:\n"
+    #     f"- This is NOT a question-answering task\n"
+    #     f"- DO NOT answer the question\n"
+    #     f"- DO NOT add any new information\n"
+    #     f"- DO NOT introduce any entities not present in the input\n"
+    #     f"- The output MUST remain a question\n"
+    #     f"- Do NOT rewrite the sentence into natural English\n\n"
+
+    #     f"SCRIPT RULES:\n"
+    #     f"- Output MUST be in Roman/Latin script only\n"
+    #     f"- Do NOT use {SOURCE_SCRIPT} script\n\n"
+
+    #     f"VALIDITY CHECK (VERY IMPORTANT):\n"
+    #     f"- If the output is a fluent English sentence, it is INVALID\n"
+    #     f"- If the output does not resemble the original sentence structure, it is INVALID\n"
+    #     f"- If invalid, modify it to keep parts of the original structure\n\n"
+
+    #     f"CRITICAL ANCHORING RULE:\n"
+    #     f"- The output MUST reuse the romanized form of the input sentence\n"
+    #     f"- Do NOT generate a completely new sentence\n"
+    #     f"- Modify only some words, do not rewrite everything\n\n"
+
+    #     f"OUTPUT FORMAT:\n"
+    #     f"{{\"translation\": \"<code-mixed question>\"}}\n\n"
+
+    #     f"{dict_hint_stage1}"
+    # )
+
+
     stage1_base_prompt = (
-        f"You are a translator. Convert this {SOURCE_LANG} ({SOURCE_SCRIPT} script) question "
-        f"into {TARGET_LANG} ({SOURCE_LANG} grammar + English content words in Roman/Latin script).\n\n"
-        f"Rules:\n"
-        f"- Preserve {SOURCE_LANG} sentence structure and grammar markers\n"
-        f"- Replace only content words (nouns, verbs, adjectives) with English equivalents\n"
-        f"- Write output in Roman/Latin script only\n"
-        f"- Output ONLY: {{\"translation\": \"...\"}}\n\n"
+        f"You are a STRICT translator performing code-mixing.\n\n"
+
+        f"Convert this {SOURCE_LANG} ({SOURCE_SCRIPT} script) question into {TARGET_LANG} "
+        f"(Roman script) while preserving the original structure.\n\n"
+
+        f"DEFINITION OF CODE-MIXING (MANDATORY):\n"
+        f"- Do NOT fully translate the sentence\n"
+        f"- Keep parts of the original sentence structure unchanged (in romanized form)\n"
+        f"- Replace ONLY some content words with English equivalents\n"
+        f"- Preserve word order exactly\n\n"
+
+        f"CRITICAL TRANSFORMATION PROCESS:\n"
+        f"- Step 1: Convert the input into a romanized version preserving ALL words\n"
+        f"- Step 2: From this romanized sentence, replace ONLY a few content words with English\n"
+        f"- Step 3: Keep the rest of the words unchanged\n"
+        f"- DO NOT rewrite the sentence\n"
+        f"- DO NOT paraphrase\n\n"
+
+        f"ILLUSTRATION (Hinglish example):\n"
+        f"Input: Bharat ki rajdhani kya hai?\n"
+        f"Romanized: Bharat ki rajdhani kya hai?\n"
+        f"Code-mixed: Bharat ki capital kya hai?\n\n"
+
+        f"Explanation:\n"
+        f"- 'Bharat', 'ki', 'kya', 'hai' are function/structural words → kept unchanged\n"
+        f"- 'rajdhani' (a noun / content word) → replaced with 'capital'\n"
+        f"- Word order is unchanged\n"
+        f"- Sentence remains a question\n\n"
+
+        f"Apply the SAME logic to {SOURCE_LANG}:\n"
+        f"- Identify function words → keep them (romanized)\n"
+        f"- Identify content words → translate some into English\n"
+        f"- Preserve structure and word order exactly\n\n"
+
+        f"HARD CONSTRAINTS (MUST FOLLOW):\n"
+        f"- The output MUST visibly resemble the original sentence structure\n"
+        f"- The output MUST NOT be a fully fluent English sentence\n"
+        f"- The output MUST be a partial transformation, not a full translation\n\n"
+
+        f"STRICT BEHAVIOR RULES:\n"
+        f"- This is NOT a question-answering task\n"
+        f"- DO NOT answer the question\n"
+        f"- DO NOT add any new information\n"
+        f"- DO NOT introduce any entities not present in the input\n"
+        f"- The output MUST remain a question\n"
+        f"- Do NOT rewrite the sentence into natural English\n\n"
+
+        f"ANTI-TEMPLATE RULE (CRITICAL):\n"
+        f"- Do NOT convert the sentence into known English question patterns\n"
+        f"- Do NOT rewrite into forms like 'Which country/state is X ...'\n"
+        f"- Even if the meaning is clear, DO NOT restructure the sentence\n"
+        f"- Preserve original phrasing and word order strictly\n\n"
+
+        f"SCRIPT RULES:\n"
+        f"- Output MUST be in Roman/Latin script only\n"
+        f"- Do NOT use {SOURCE_SCRIPT} script\n\n"
+
+        f"VALIDITY CHECK (VERY IMPORTANT):\n"
+        f"- If the output is a fluent English sentence, it is INVALID\n"
+        f"- If the output does not resemble the original sentence structure, it is INVALID\n"
+        f"- If invalid, modify it to keep parts of the original structure\n\n"
+
+        f"CRITICAL ANCHORING RULE:\n"
+        f"- The output MUST reuse the romanized form of the input sentence\n"
+        f"- Do NOT generate a completely new sentence\n"
+        f"- Modify only some words, do not rewrite everything\n"
+        f"- At least half of the words should remain unchanged from the romanized input\n\n"
+
+        f"LEXICAL PRESERVATION RULE (CRITICAL):\n"
+        f"- You MUST keep most words from the input sentence after romanization\n"
+        f"- Do NOT replace all words with English equivalents\n"
+        f"- At least 50% of the words MUST remain from the original sentence (romanized)\n"
+        f"- Only replace a FEW content words with English\n\n"
+
+        f"OUTPUT FORMAT:\n"
+        f"{{\"translation\": \"<code-mixed question>\"}}\n\n"
+
         f"{dict_hint_stage1}"
     )
 
@@ -296,7 +610,8 @@ def evaluate(llm, dataset, max_new_tokens=10, n_shot=3):
         "- No English in answer\n\n"
     )
 
-    print(f"\n[Evaluating {len(test_data)} examples with {n_shot}-shot prompts]")
+    # print(f"\n[Evaluating {len(test_data)} examples with {n_shot}-shot prompts]")
+    print(f"\n[Evaluating {len(test_data)} examples]")
     print(f"📁 Output directory: {output_subdir}")
     print(f"💡 Tip: Run 'tail -f {live_path}' in another terminal to watch progress\n")
 
@@ -308,7 +623,7 @@ def evaluate(llm, dataset, max_new_tokens=10, n_shot=3):
     stage2_prompts         = []  # Hinglish → Hindi answer prompts  
     stage2_metadata        = []  # (ex, lang, index, object_candidates, hinglish_q, original_q, stage1_prompt, stage1_raw)
     
-    batch_size      = 1
+    batch_size      = 8
 
     live_data = {
         "progress":        "0/0",
@@ -336,16 +651,17 @@ def evaluate(llm, dataset, max_new_tokens=10, n_shot=3):
         
         s1_prompt = stage1_base_prompt
         
-        # Add few-shot examples from dataset (source language questions, like Script 2)
-        key = (relation, lang)
-        candidates_pool = [c[1] for c in candidates_by_key[key] if c[0] != idx]
-        if candidates_pool:
-            demonstrations = random.sample(candidates_pool, min(n_shot, len(candidates_pool)))
-            for d in demonstrations:
-                demo_question = d["template"].replace("<subject>", d["subject"]).replace("<mask>", "").strip()
-                s1_prompt += f"Q: {demo_question}\nOutput:\n\n"
+        # # Add few-shot examples from dataset (source language questions, like Script 2)
+        # key = (relation, lang)
+        # candidates_pool = [c[1] for c in candidates_by_key[key] if c[0] != idx]
+        # if candidates_pool:
+        #     demonstrations = random.sample(candidates_pool, min(n_shot, len(candidates_pool)))
+        #     for d in demonstrations:
+        #         demo_question = d["template"].replace("<subject>", d["subject"]).replace("<mask>", "").strip()
+        #         s1_prompt += f"Q: {demo_question}\nOutput:\n\n"
         
-        s1_prompt += f"Q: {test_question}\nOutput:"
+        # s1_prompt += f"Q: {test_question}\nOutput:"
+        s1_prompt = stage1_base_prompt + f"\nQ: {test_question}\nOutput:"
 
         stage1_prompts.append(s1_prompt)
         stage1_metadata.append((ex, lang, index, test_question))
