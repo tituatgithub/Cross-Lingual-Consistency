@@ -14,7 +14,7 @@ from tqdm import tqdm
 import time
 
 # ==== CONFIGURATION - SET THIS ONCE ====
-OUTPUT_DIR = "1_Call_EN"
+OUTPUT_DIR = "1_call_en_placeholder_corr_final"
 # ======================================
 
 # ==== Argument parser ====
@@ -121,7 +121,7 @@ dataset = Dataset.from_list(samples)
 llm = LLM(
     model=model_name,
     trust_remote_code=True,
-    gpu_memory_utilization=0.25,
+    gpu_memory_utilization=0.20,
     max_model_len=4096,
     max_num_seqs=16
 )
@@ -266,18 +266,72 @@ def evaluate(llm, dataset, max_new_tokens=10, n_shot=3):
         key = (ex.get("relation"), ex.get("language"))
         candidates_by_key[key].append((i, ex))
 
+    # base_prompt = (
+    #     f"You are answering factual questions written in {SOURCE_LANG} ({SOURCE_SCRIPT} script).\n"
+    #     f"First, translate the {SOURCE_LANG} question into {TARGET_LANG}.\n"
+    #     f"Then answer based on that understanding.\n\n"
+    #     "Output a JSON object with exactly two fields:\n"
+    #     f"  \"translation\": the {TARGET_LANG} translation,\n"
+    #     f"  \"answer\": the correct answer in {SOURCE_LANG} {SOURCE_SCRIPT} script, chosen from candidates.\n\n"
+    #     "Rules:\n"
+    #     f"- The translation MUST be in {TARGET_LANG} only (not {SOURCE_SCRIPT} script)\n"
+    #     "- The answer MUST be one of the listed candidates\n"
+    #     f"- The answer MUST be in {SOURCE_LANG} {SOURCE_SCRIPT} script only\n"
+    #     f"- Do NOT use {TARGET_LANG} in the answer field\n\n"
+    # )
+
+
+# some native some english
+    # base_prompt = (
+    #     f"You are answering factual questions written in {SOURCE_LANG} ({SOURCE_SCRIPT} script).\n\n"
+
+    #     f"You MUST perform BOTH steps:\n"
+    #     f"1. Translate the question into {TARGET_LANG}\n"
+    #     f"2. Answer using the candidates based on that translation\n\n"
+
+    #     "Output MUST be a JSON object with EXACTLY two fields:\n"
+    #     f"  \"translation\": the {TARGET_LANG} translation of the question,\n"
+    #     f"  \"answer\": the correct answer in {SOURCE_LANG} ({SOURCE_SCRIPT} script)\n\n"
+
+    #     "IMPORTANT RULES:\n"
+    #     "- BOTH fields are REQUIRED\n"
+    #     "- Missing \"translation\" makes the output INVALID\n"
+    #     "- Generate \"translation\" FIRST, then \"answer\"\n"
+    #     "- Do NOT skip translation even if examples omit it\n"
+    #     f"- The translation MUST be in {TARGET_LANG} only (not {SOURCE_SCRIPT} script)\n"
+    #     "- The answer MUST be one of the listed candidates\n"
+    #     f"- The answer MUST be written in {SOURCE_LANG} ({SOURCE_SCRIPT} script) only\n"
+    #     f"- Do NOT use {TARGET_LANG} in the answer field\n\n"
+
+    #     "Start your output exactly like this:\n"
+    #     "{\"translation\":"
+    # )
     base_prompt = (
-        f"You are answering factual questions written in {SOURCE_LANG} ({SOURCE_SCRIPT} script).\n"
-        f"Step 1 (internal only): Mentally translate the {SOURCE_LANG} question into {TARGET_LANG} "
-        f"to understand it clearly.\n"
-        "Step 2: Based on your understanding, output a JSON object with exactly two fields:\n"
-        f"  \"translation\": the {TARGET_LANG} translation of the question,\n"
-        f"  \"answer\": the correct answer in {SOURCE_LANG} {SOURCE_SCRIPT} script, chosen from the provided candidates.\n\n"
-        "Rules:\n"
-        "- The answer MUST be one of the listed candidates.\n"
-        f"- The answer MUST be written in {SOURCE_LANG} {SOURCE_SCRIPT} script only.\n"
-        f"- Do NOT use {TARGET_LANG} in the answer field.\n\n"
+        f"You are answering factual questions written in {SOURCE_LANG} ({SOURCE_SCRIPT} script).\n\n"
+
+        f"You MUST do BOTH of the following:\n"
+        f"1. Translate the question into {TARGET_LANG}\n"
+        f"2. Select the correct answer from the candidates using that understanding\n\n"
+
+        "You MUST output a JSON object with EXACTLY two fields:\n"
+        f"  \"translation\": a fluent {TARGET_LANG} sentence translating the question\n"
+        f"  \"answer\": the correct answer in {SOURCE_LANG} ({SOURCE_SCRIPT} script)\n\n"
+
+        "STRICT RULES:\n"
+        "- BOTH fields are REQUIRED\n"
+        "- Do NOT omit \"translation\"\n"
+        "- Do NOT copy the original question into \"translation\"\n"
+        "- The translation MUST be a proper natural sentence in the target language\n"
+        "- The translation MUST NOT contain source script text\n"
+        "- The answer MUST be chosen EXACTLY from the candidates\n"
+        "- The answer MUST be in source script only\n"
+        "- Do NOT include explanations\n\n"
+
+        "FORMAT REQUIREMENT:\n"
+        "{\"translation\": \"<English sentence>\", \"answer\": \"<candidate>\"}\n\n"
     )
+
+
 
     print(f"\n[Evaluating {len(test_data)} examples with {n_shot}-shot prompts]")
     print(f"📁 Output directory: {output_subdir}")
@@ -285,7 +339,7 @@ def evaluate(llm, dataset, max_new_tokens=10, n_shot=3):
 
     prompts = []
     prompt_metadata = []
-    batch_size = 1
+    batch_size = 8
 
     live_data = {
         "progress": "0/0",
