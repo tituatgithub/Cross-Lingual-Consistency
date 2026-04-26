@@ -280,6 +280,6 @@ def evaluate(llm, dataset, max_new_tokens=10, n_shot=3, save_path="filter_knowns
 
     return results
 
-safe_save_path = f"filter_knowns_live/{model_name.replace('/', '_')}_results.json"
+safe_save_path = f"filter_knowns_live_baseline/{model_name.replace('/', '_')}_results.json"
 os.makedirs(os.path.dirname(safe_save_path), exist_ok=True)
 evaluate(llm, dataset, max_new_tokens=10, n_shot=3, save_path=safe_save_path)
