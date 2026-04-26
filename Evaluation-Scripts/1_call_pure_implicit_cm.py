@@ -29,6 +29,8 @@ parser.add_argument("--output_dir",    type=str, default="1_call_pure_implicit_c
 parser.add_argument("--source_lang",   type=str, required=True)
 parser.add_argument("--source_script", type=str, required=True)
 parser.add_argument("--target_lang",   type=str, required=True)
+parser.add_argument("--batch_size",             type=int,   default=8,    help="Number of prompts per vLLM batch")
+parser.add_argument("--gpu_memory_utilization", type=float, default=0.20, help="Fraction of GPU memory vLLM may use (0.0–1.0)")
 args = parser.parse_args()
 
 SOURCE_LANG   = args.source_lang
@@ -101,7 +103,7 @@ dataset = Dataset.from_list(samples)
 llm = LLM(
     model=model_name,
     trust_remote_code=True,
-    gpu_memory_utilization=0.20,
+    gpu_memory_utilization=args.gpu_memory_utilization,
     max_model_len=4096,
     max_num_seqs=16
 )
@@ -285,7 +287,7 @@ def evaluate(llm, dataset, max_new_tokens=10, n_shot=3):
 
     prompts = []
     prompt_metadata = []
-    batch_size = 8
+    batch_size = args.batch_size
 
     live_data = {
         "progress": "0/0",
