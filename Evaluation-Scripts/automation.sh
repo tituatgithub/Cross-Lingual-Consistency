@@ -69,7 +69,7 @@ MODELS=(
     # "Qwen/Qwen2.5-3B"
     # "meta-llama/Llama-3.2-1B"
     # "meta-llama/Llama-3.2-3B"
-    "google/gemma-3-270m"
+    # "google/gemma-3-270m"
     # "google/gemma-3-270m-it"
     # "google/gemma-3-1b-pt"
     # "google/gemma-3-1b-it"
@@ -89,7 +89,7 @@ MODELS=(
     # "Qwen/Qwen2.5-14B"
     # "Qwen/Qwen2.5-14B-Instruct"
     # "deepseek-ai/DeepSeek-R1-Distill-Llama-8B"
-    # "deepseek-ai/DeepSeek-R1-Distill-Qwen-14B"
+    "deepseek-ai/DeepSeek-R1-Distill-Qwen-14B"
 
     # ── Qwen3 Instruct / Thinking ──────────
     # "Qwen/Qwen3-4B-Instruct-2507"
