@@ -416,16 +416,25 @@ run_language_en() {
 # run_language_en
 
 # ── Indic languages ───────────────────────────────────────────────────────────
-# run_language  "hin"    "Hindi"      "Hindi"      "Hinglish"
-# run_language  "hin-en" "Hindi"      "Hindi"      "Hinglish"
-# run_language  "ben"    "Bengali"    "Bengali"    "Banglish"
 # run_language  "asm"    "Assamese"   "Assamese"   "Assamglish"
-# run_language  "ori"    "Odia"       "Odia"       "Odiglish"
+# run_language  "ben"    "Bengali"    "Bengali"    "Banglish"
+run_language  "doi"    "Dogri"      "Dogri"      "Dogrilish"
 # run_language  "guj"    "Gujarati"   "Gujarati"   "Gujlish"
+# run_language  "hin"    "Hindi"      "Hindi"      "Hinglish"
+run_language  "kan"    "Kannada"    "Kannada"    "Kanglish"
+run_language  "kon"    "Konkani"    "Konkani"    "Konklish"
+run_language  "mai"    "Maithili"   "Maithili"   "Maithilish"
+run_language  "mal"    "Malayalam"  "Malayalam"  "Malyalamglish"
+run_language  "mar"    "Marathi"    "Marathi"    "Marglish"
+run_language  "nep"    "Nepali"     "Nepali"     "Nepglish"
+# run_language  "ori"    "Odia"       "Odia"       "Odiglish"
+run_language  "pan"    "Punjabi"    "Punjabi"    "Punglish"
+run_language  "san"    "Sanskrit"   "Sanskrit"   "Sanglish"
+run_language  "snd"    "Sindhi"     "Sindhi"     "Sindlish"
+run_language  "tam"    "Tamil"      "Tamil"      "Tamlish"
 run_language  "tel"    "Telugu"     "Telugu"     "Teluglish"
-# run_language  "mal"    "Malayalam"  "Malayalam"  "Malyalamglish"
-# run_language  "mai"    "Maithili"   "Maithili"   "Maithilish"
-# run_language  "nep"    "Nepali"     "Nepali"     "Nepglish"
+run_language  "urd"    "Urdu"       "Urdu"       "Urglish"
+
 
 # ============================================================
 #  DONE
