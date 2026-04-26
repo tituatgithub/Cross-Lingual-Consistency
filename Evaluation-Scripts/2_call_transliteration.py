@@ -41,6 +41,8 @@ parser.add_argument("--output_dir", type=str, default="2_call_transliteration")
 parser.add_argument("--source_lang", type=str, required=True)
 parser.add_argument("--source_script", type=str, required=True)
 parser.add_argument("--target_lang", type=str, required=True)
+parser.add_argument("--batch_size",             type=int,   default=8,    help="Number of prompts per vLLM batch")
+parser.add_argument("--gpu_memory_utilization", type=float, default=0.45, help="Fraction of GPU memory vLLM may use (0.0–1.0)")
 
 args = parser.parse_args()
 
@@ -134,9 +136,9 @@ print(f"[Dataset] Loaded {len(samples)} samples across {len(path_map)} relations
 llm = LLM(
     model=model_name,
     trust_remote_code=True,
-    gpu_memory_utilization=0.45,
+    gpu_memory_utilization=args.gpu_memory_utilization,
     max_model_len=4096,
-    max_num_seqs= 16
+    max_num_seqs=16
 )
 
 # ==== Guided JSON schemas ====
@@ -570,7 +572,7 @@ def evaluate(llm, dataset, max_new_tokens=10, n_shot=3):
     stage2_prompts         = []  # Hinglish → Hindi answer prompts  
     stage2_metadata        = []  # (ex, lang, index, object_candidates, hinglish_q, original_q, stage1_prompt, stage1_raw)
     
-    batch_size      = 8
+    batch_size      = args.batch_size
 
     live_data = {
         "progress":        "0/0",
