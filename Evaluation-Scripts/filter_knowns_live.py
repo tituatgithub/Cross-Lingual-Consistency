@@ -21,6 +21,8 @@ parser.add_argument(
     required=True,
     help="Comma-separated language codes, e.g. asm,ben,guj"
 )
+parser.add_argument("--batch_size",             type=int,   default=8,    help="Number of prompts per vLLM batch")
+parser.add_argument("--gpu_memory_utilization", type=float, default=0.20, help="Fraction of GPU memory vLLM may use (0.0–1.0)")
 args = parser.parse_args()
 
 model_name = args.model_name
@@ -112,9 +114,9 @@ dataset = Dataset.from_list([apply_prompt(ex) for ex in samples])
 llm = LLM(
     model=model_name,
     trust_remote_code=True,
-    gpu_memory_utilization=0.20,   # you already bumped this to 0.9
-    max_model_len=4096,            # cap sequence length to save memory
-    max_num_seqs=16                # max parallel sequences vLLM processes at once
+    gpu_memory_utilization=args.gpu_memory_utilization,
+    max_model_len=4096,
+    max_num_seqs=16
 )
 sampling_params = SamplingParams(temperature=0.0, max_tokens=10)
 
@@ -167,7 +169,7 @@ def evaluate(llm, dataset, max_new_tokens=10, n_shot=3, save_path="filter_knowns
 
     prompts = []
     prompt_metadata = []
-    batch_size = 8
+    batch_size = args.batch_size
 
     for idx, ex in enumerate(tqdm(test_data)):
         lang = ex.get("language", "unknown")
