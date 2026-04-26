@@ -1,6 +1,6 @@
 #!/bin/bash
 # ============================================================
-#  automation.sh
+#  automation_2.sh
 #  Runs all evaluation scripts for multiple languages.
 #
 #  Scripts run per language:
@@ -8,7 +8,7 @@
 #    2.  Baseline_filter_knowns_with_obj  (filter_knowns_live_obj.py)
 #    3.  Implicit_CM                      (1_call_pure_implicit_cm.py)
 #    4.  Implicit_EN                      (1_call_pure_implicit_en.py)
-#    5.  1_Call_CM                        (1_call_cm_placeholder.py)
+#    5.  1_Call_CM                        (1_call_cm_placeholder_2.py)
 #    6.  1_Call_EN                        (1_call_en_placeholder.py)
 #    7.  2_Call_CM                        (2_call_cm_placeholder_correct.py)
 #    8.  2_Call_EN                        (2_call_en_placeholder.py)
@@ -44,6 +44,19 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 #  GPU — change to 0 if you want device 0
 # ──────────────────────────────────────────
 export CUDA_VISIBLE_DEVICES=1
+
+# ──────────────────────────────────────────
+#  BATCH_SIZE — prompts per vLLM batch
+#  (default matches original hardcoded values
+#   in each script; override here globally)
+# ──────────────────────────────────────────
+BATCH_SIZE=8
+
+# ──────────────────────────────────────────
+#  GPU_MEM_UTIL — fraction of GPU memory
+#  that vLLM may use (0.0 – 1.0)
+# ──────────────────────────────────────────
+GPU_MEM_UTIL=0.20
 
 # ──────────────────────────────────────────
 #  MODELS — comment/uncomment as needed
@@ -139,9 +152,17 @@ run_language() {
     local TARGET_LANG_CM="$4"     # e.g. Banglish | Hinglish
     local TARGET_LANG_EN="English"
 
-    # ── Baseline lang_codes: native dir + english dir joined with comma ──
-    # e.g.  ben → "ben,ben-en"   |   hin-en → "hin-en,hin-en-en"  (handled by filter scripts)
-    local LANG_CODE_WITH_EN="${LANG_CODE},${LANG_CODE}-en"
+    # ── Baseline lang_codes: try native-en dir first; fall back to native only ──
+    # e.g.  ben → "ben,ben-en" if cm_klar/ben-en/ exists, else just "ben"
+    local EN_DIR="${DATA_DIR}/${LANG_CODE}-en"
+    local LANG_CODE_WITH_EN
+    if [ -d "${SCRIPT_DIR}/${EN_DIR}" ]; then
+        LANG_CODE_WITH_EN="${LANG_CODE},${LANG_CODE}-en"
+        echo "  ℹ️   Found ${EN_DIR} — baselines will use: ${LANG_CODE_WITH_EN}"
+    else
+        LANG_CODE_WITH_EN="${LANG_CODE}"
+        echo "  ⚠️   ${EN_DIR} not found — baselines will use native only: ${LANG_CODE_WITH_EN}"
+    fi
 
     echo ""
     echo "╔══════════════════════════════════════════════════════╗"
@@ -160,109 +181,127 @@ run_language() {
             "Baseline_filter_knowns | ${SOURCE_LANG} | ${MODEL}" \
             "$(logfile "$LANG_CODE" "Baseline_filter_knowns" "$MODEL")" \
             ${SCRIPT_DIR}/filter_knowns_live.py \
-                --model_name    "$MODEL" \
-                --seed          "$SEED" \
-                --lang_codes    "$LANG_CODE_WITH_EN"
+                --model_name              "$MODEL" \
+                --seed                    "$SEED" \
+                --lang_codes              "$LANG_CODE_WITH_EN" \
+                --batch_size              "$BATCH_SIZE" \
+                --gpu_memory_utilization  "$GPU_MEM_UTIL"
 
         # ── Script 2: Baseline_filter_knowns_with_obj  (native + en) ──────
         run_script \
             "Baseline_filter_knowns_with_obj | ${SOURCE_LANG} | ${MODEL}" \
             "$(logfile "$LANG_CODE" "Baseline_filter_knowns_with_obj" "$MODEL")" \
             ${SCRIPT_DIR}/filter_knowns_live_obj.py \
-                --model_name    "$MODEL" \
-                --seed          "$SEED" \
-                --lang_codes    "$LANG_CODE_WITH_EN"
+                --model_name              "$MODEL" \
+                --seed                    "$SEED" \
+                --lang_codes              "$LANG_CODE_WITH_EN" \
+                --batch_size              "$BATCH_SIZE" \
+                --gpu_memory_utilization  "$GPU_MEM_UTIL"
 
         # ── Script 3: Implicit_CM  (native only) ──────────────────────────
         run_script \
             "Implicit_CM | ${SOURCE_LANG} | ${MODEL}" \
             "$(logfile "$LANG_CODE" "Implicit_CM" "$MODEL")" \
             ${SCRIPT_DIR}/1_call_pure_implicit_cm.py \
-                --model_name    "$MODEL" \
-                --seed          "$SEED" \
-                --lang_code     "$LANG_CODE" \
-                --data_dir      "$DATA_DIR" \
-                --source_lang   "$SOURCE_LANG" \
-                --source_script "$SOURCE_SCRIPT" \
-                --target_lang   "$TARGET_LANG_CM"
+                --model_name              "$MODEL" \
+                --seed                    "$SEED" \
+                --lang_code               "$LANG_CODE" \
+                --data_dir                "$DATA_DIR" \
+                --source_lang             "$SOURCE_LANG" \
+                --source_script           "$SOURCE_SCRIPT" \
+                --target_lang             "$TARGET_LANG_CM" \
+                --batch_size              "$BATCH_SIZE" \
+                --gpu_memory_utilization  "$GPU_MEM_UTIL"
 
         # ── Script 4: Implicit_EN  (native only) ──────────────────────────
         run_script \
             "Implicit_EN | ${SOURCE_LANG} | ${MODEL}" \
             "$(logfile "$LANG_CODE" "Implicit_EN" "$MODEL")" \
             ${SCRIPT_DIR}/1_call_pure_implicit_en.py \
-                --model_name    "$MODEL" \
-                --seed          "$SEED" \
-                --lang_code     "$LANG_CODE" \
-                --data_dir      "$DATA_DIR" \
-                --source_lang   "$SOURCE_LANG" \
-                --source_script "$SOURCE_SCRIPT" \
-                --target_lang   "$TARGET_LANG_EN"
+                --model_name              "$MODEL" \
+                --seed                    "$SEED" \
+                --lang_code               "$LANG_CODE" \
+                --data_dir                "$DATA_DIR" \
+                --source_lang             "$SOURCE_LANG" \
+                --source_script           "$SOURCE_SCRIPT" \
+                --target_lang             "$TARGET_LANG_EN" \
+                --batch_size              "$BATCH_SIZE" \
+                --gpu_memory_utilization  "$GPU_MEM_UTIL"
 
         # ── Script 5: 1_Call_CM  (native only) ────────────────────────────
         run_script \
             "1_Call_CM | ${SOURCE_LANG} | ${MODEL}" \
             "$(logfile "$LANG_CODE" "1_Call_CM" "$MODEL")" \
             ${SCRIPT_DIR}/1_call_cm_placeholder.py \
-                --model_name    "$MODEL" \
-                --seed          "$SEED" \
-                --lang_code     "$LANG_CODE" \
-                --data_dir      "$DATA_DIR" \
-                --source_lang   "$SOURCE_LANG" \
-                --source_script "$SOURCE_SCRIPT" \
-                --target_lang   "$TARGET_LANG_CM"
+                --model_name              "$MODEL" \
+                --seed                    "$SEED" \
+                --lang_code               "$LANG_CODE" \
+                --data_dir                "$DATA_DIR" \
+                --source_lang             "$SOURCE_LANG" \
+                --source_script           "$SOURCE_SCRIPT" \
+                --target_lang             "$TARGET_LANG_CM" \
+                --batch_size              "$BATCH_SIZE" \
+                --gpu_memory_utilization  "$GPU_MEM_UTIL"
 
         # ── Script 6: 1_Call_EN  (native only) ────────────────────────────
         run_script \
             "1_Call_EN | ${SOURCE_LANG} | ${MODEL}" \
             "$(logfile "$LANG_CODE" "1_Call_EN" "$MODEL")" \
             ${SCRIPT_DIR}/1_call_en_placeholder.py \
-                --model_name    "$MODEL" \
-                --seed          "$SEED" \
-                --data_dir      "$DATA_DIR" \
-                --lang_codes    "$LANG_CODE" \
-                --source_lang   "$SOURCE_LANG" \
-                --source_script "$SOURCE_SCRIPT" \
-                --target_lang   "$TARGET_LANG_EN"
+                --model_name              "$MODEL" \
+                --seed                    "$SEED" \
+                --data_dir                "$DATA_DIR" \
+                --lang_codes              "$LANG_CODE" \
+                --source_lang             "$SOURCE_LANG" \
+                --source_script           "$SOURCE_SCRIPT" \
+                --target_lang             "$TARGET_LANG_EN" \
+                --batch_size              "$BATCH_SIZE" \
+                --gpu_memory_utilization  "$GPU_MEM_UTIL"
 
         # ── Script 7: 2_Call_CM  (native only) ────────────────────────────
         run_script \
             "2_Call_CM | ${SOURCE_LANG} | ${MODEL}" \
             "$(logfile "$LANG_CODE" "2_Call_CM" "$MODEL")" \
             ${SCRIPT_DIR}/2_call_cm_placeholder_correct.py \
-                --model_name    "$MODEL" \
-                --seed          "$SEED" \
-                --lang_code     "$LANG_CODE" \
-                --data_dir      "$DATA_DIR" \
-                --source_lang   "$SOURCE_LANG" \
-                --source_script "$SOURCE_SCRIPT" \
-                --target_lang   "$TARGET_LANG_CM"
+                --model_name              "$MODEL" \
+                --seed                    "$SEED" \
+                --lang_code               "$LANG_CODE" \
+                --data_dir                "$DATA_DIR" \
+                --source_lang             "$SOURCE_LANG" \
+                --source_script           "$SOURCE_SCRIPT" \
+                --target_lang             "$TARGET_LANG_CM" \
+                --batch_size              "$BATCH_SIZE" \
+                --gpu_memory_utilization  "$GPU_MEM_UTIL"
 
         # ── Script 8: 2_Call_EN  (native only) ────────────────────────────
         run_script \
             "2_Call_EN | ${SOURCE_LANG} | ${MODEL}" \
             "$(logfile "$LANG_CODE" "2_Call_EN" "$MODEL")" \
             ${SCRIPT_DIR}/2_call_en_placeholder.py \
-                --model_name    "$MODEL" \
-                --seed          "$SEED" \
-                --data_dir      "$DATA_DIR" \
-                --lang_codes    "$LANG_CODE" \
-                --source_lang   "$SOURCE_LANG" \
-                --source_script "$SOURCE_SCRIPT" \
-                --target_lang   "$TARGET_LANG_EN"
+                --model_name              "$MODEL" \
+                --seed                    "$SEED" \
+                --data_dir                "$DATA_DIR" \
+                --lang_codes              "$LANG_CODE" \
+                --source_lang             "$SOURCE_LANG" \
+                --source_script           "$SOURCE_SCRIPT" \
+                --target_lang             "$TARGET_LANG_EN" \
+                --batch_size              "$BATCH_SIZE" \
+                --gpu_memory_utilization  "$GPU_MEM_UTIL"
 
         # ── Script 9: 2_Call_Transliteration  (native only) ───────────────
         run_script \
             "2_Call_Transliteration | ${SOURCE_LANG} | ${MODEL}" \
             "$(logfile "$LANG_CODE" "2_Call_Transliteration" "$MODEL")" \
             ${SCRIPT_DIR}/2_call_transliteration.py \
-                --model_name    "$MODEL" \
-                --seed          "$SEED" \
-                --lang_code     "$LANG_CODE" \
-                --data_dir      "$DATA_DIR" \
-                --source_lang   "$SOURCE_LANG" \
-                --source_script "$SOURCE_SCRIPT" \
-                --target_lang   "Transliterated"
+                --model_name              "$MODEL" \
+                --seed                    "$SEED" \
+                --lang_code               "$LANG_CODE" \
+                --data_dir                "$DATA_DIR" \
+                --source_lang             "$SOURCE_LANG" \
+                --source_script           "$SOURCE_SCRIPT" \
+                --target_lang             "Transliterated" \
+                --batch_size              "$BATCH_SIZE" \
+                --gpu_memory_utilization  "$GPU_MEM_UTIL"
 
         # ── Cleanup: delete model from HuggingFace cache after all scripts ─
         # e.g.  Qwen/Qwen2.5-7B  →  models--Qwen--Qwen2.5-7B
@@ -319,18 +358,22 @@ run_language_en() {
             "Baseline_filter_knowns | English | ${MODEL}" \
             "$(logfile "$LANG_CODE" "Baseline_filter_knowns" "$MODEL")" \
             ${SCRIPT_DIR}/filter_knowns_live.py \
-                --model_name    "$MODEL" \
-                --seed          "$SEED" \
-                --lang_codes    "$LANG_CODE"
+                --model_name              "$MODEL" \
+                --seed                    "$SEED" \
+                --lang_codes              "$LANG_CODE" \
+                --batch_size              "$BATCH_SIZE" \
+                --gpu_memory_utilization  "$GPU_MEM_UTIL"
 
         # -- Script 2: Baseline_filter_knowns_with_obj  (en only) ---------
         run_script \
             "Baseline_filter_knowns_with_obj | English | ${MODEL}" \
             "$(logfile "$LANG_CODE" "Baseline_filter_knowns_with_obj" "$MODEL")" \
             ${SCRIPT_DIR}/filter_knowns_live_obj.py \
-                --model_name    "$MODEL" \
-                --seed          "$SEED" \
-                --lang_codes    "$LANG_CODE"
+                --model_name              "$MODEL" \
+                --seed                    "$SEED" \
+                --lang_codes              "$LANG_CODE" \
+                --batch_size              "$BATCH_SIZE" \
+                --gpu_memory_utilization  "$GPU_MEM_UTIL"
 
         # -- [SKIP] Scripts 3-9 -- not applicable for English --------------
         # All remaining scripts (Implicit_CM/EN, 1_Call_CM/EN, 2_Call_CM/EN,
