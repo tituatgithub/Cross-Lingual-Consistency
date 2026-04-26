@@ -14,7 +14,7 @@ from tqdm import tqdm
 import time
 
 # ==== CONFIGURATION - SET THIS ONCE ====
-OUTPUT_DIR = "1_call_en_placeholder_corr"
+OUTPUT_DIR = "1_call_en_placeholder"
 # ======================================
 
 # ==== Argument parser ====
@@ -38,6 +38,8 @@ parser.add_argument("--source_script", type=str, default="Devanagari",
                     help="Script name for the source language, e.g. Devanagari, Bengali, Odia")
 parser.add_argument("--target_lang", type=str, default="English",
                     help="Target language for the translation field, e.g. English")
+parser.add_argument("--batch_size",             type=int,   default=8,    help="Number of prompts per vLLM batch")
+parser.add_argument("--gpu_memory_utilization", type=float, default=0.20, help="Fraction of GPU memory vLLM may use (0.0–1.0)")
 args = parser.parse_args()
 
 model_name    = args.model_name
@@ -121,7 +123,7 @@ dataset = Dataset.from_list(samples)
 llm = LLM(
     model=model_name,
     trust_remote_code=True,
-    gpu_memory_utilization=0.20,
+    gpu_memory_utilization=args.gpu_memory_utilization,
     max_model_len=4096,
     max_num_seqs=16
 )
@@ -339,7 +341,7 @@ def evaluate(llm, dataset, max_new_tokens=10, n_shot=3):
 
     prompts = []
     prompt_metadata = []
-    batch_size = 8
+    batch_size = args.batch_size
 
     live_data = {
         "progress": "0/0",
