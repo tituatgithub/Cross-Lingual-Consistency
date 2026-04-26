@@ -24,7 +24,7 @@ def load_language_config(lang_code: str) -> dict:
         return json.load(f)
 
 # ==== CONFIGURATION - SET THIS ONCE ====
-OUTPUT_DIR      = "2_call_cm_placeholder_corr_8"
+OUTPUT_DIR      = "2_call_cm_placeholder_corr"
 DATA_DIR        = "cm_klar"
 DICTIONARY_PATH = None   # e.g. "dicts/hin_eng_dict.json" or None to disable
 # ======================================
