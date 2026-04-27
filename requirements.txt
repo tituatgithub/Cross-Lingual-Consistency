@@ -1,0 +1,39 @@
+# ============================================================
+#  requirements.txt  —  automation_2.sh Python dependencies
+#
+#  Environment:  /home/babu/miniconda3/envs/vllm  (Python 3.11)
+#
+#  Scripts covered:
+#    filter_knowns_live.py
+#    filter_knowns_live_obj.py
+#    1_call_pure_implicit_cm.py
+#    1_call_pure_implicit_en.py
+#    1_call_cm_placeholder_2.py
+#    1_call_en_placeholder.py
+#    2_call_cm_placeholder_correct.py
+#    2_call_en_placeholder.py
+#    2_call_transliteration.py
+#
+#  Install with:
+#    pip install -r requirements.txt
+#
+#  NOTE: torch must match your CUDA version.
+#  The version below was built for CUDA 12.8 (cu128).
+#  For a different CUDA version, install torch separately first:
+#    pip install torch==2.9.1 --index-url https://download.pytorch.org/whl/cu121
+# ============================================================
+
+# ── Inference engine ──────────────────────────────────────
+vllm==0.15.1
+
+# ── Deep learning framework ───────────────────────────────
+torch==2.9.1
+
+# ── HuggingFace stack ─────────────────────────────────────
+transformers==4.57.6
+datasets==2.12.0
+huggingface_hub==0.36.2
+
+# ── Utilities ─────────────────────────────────────────────
+numpy==2.2.6
+tqdm==4.67.3
