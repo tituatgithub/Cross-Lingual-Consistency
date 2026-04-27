@@ -19,7 +19,7 @@ A research evaluation framework that tests how well large language models answer
 8. [Adding Models](#8-adding-models)
 9. [Using Hugging Face Model Names](#9-using-hugging-face-model-names)
 10. [Language & Script Reference](#10-language--script-reference)
-11. [Quick Troubleshooting](#11-quick-troubleshooting)[Quick Troubleshooting](#10-quick-troubleshooting)
+11. [Quick Troubleshooting](#11-quick-troubleshooting)
 
 ---
 
@@ -38,6 +38,7 @@ The expected layout after setup:
 
 ```
 cross-lingual-consistency/
+├── requirements.txt                    ← install from repo root before anything else
 └── Evaluation-Scripts/
     ├── cm_klar/                        ← your data goes here (see Section 2)
     │   ├── hin/
@@ -75,11 +76,11 @@ cm_klar/
 │   ├── capital.json
 │   ├── place_of_birth.json
 │   └── ... (one file per relation)
-├── hin-en/                 ← Hindi questions translated to English
+├── hin-en/                 ← Hindi questions converted to hinglish
 │   ├── capital.json
 │   └── ...
 ├── ben/                    ← Bengali (native script)
-├── ben-en/                 ← Bengali → English
+├── ben-en/                 ← Bengali → Ben-English
 ├── asm/                    ← Assamese
 ├── asm-en/
 ├── ori/                    ← Odia
@@ -174,19 +175,20 @@ source venv/bin/activate          # Linux / macOS
 
 ### 4.2 Install Dependencies
 
-```bash
-pip install --upgrade pip
+A `requirements.txt` is provided in the **repo root** (one level above `Evaluation-Scripts/`).
 
-pip install \
-    vllm \
-    torch \
-    transformers \
-    datasets \
-    tqdm \
-    numpy
+```bash
+# From the repo root
+pip install --upgrade pip
+pip install -r requirements.txt
 ```
 
-> **Note on vLLM:** vLLM requires a CUDA-capable GPU and a matching CUDA toolkit. Install the version of `torch` that matches your CUDA version before installing `vllm`. See [vllm.ai](https://docs.vllm.ai/en/latest/getting_started/installation.html) for details.
+> **Note on CUDA / torch:** The pinned `torch` version in `requirements.txt` was built for **CUDA 12.8**. If your machine uses a different CUDA version, install torch separately first before running the command above:
+> ```bash
+> pip install torch==2.9.1 --index-url https://download.pytorch.org/whl/cu121
+> pip install -r requirements.txt
+> ```
+> See [vllm.ai](https://docs.vllm.ai/en/latest/getting_started/installation.html) for other CUDA variants.
 
 For Hugging Face gated models (e.g. Llama, Gemma), log in once:
 
@@ -465,6 +467,19 @@ pasting into notes or a paper.
 
 ### CLC formula
 
+CLC measures how often the model gets the **same questions right across languages**, using Jaccard overlap of correct sample indices.
+
+**Per-language CLC** — for language $L_i$, average its Jaccard overlap with every other language $L_j$:
+
+$$\text{CLC}(L_i) = \frac{1}{|L| - 1} \sum_{j \neq i} \frac{|C_i \cap C_j|}{|C_i \cup C_j|}$$
+
+**Overall CLC** — average of all per-language CLC scores:
+
+$$\text{CLC}_{\text{overall}} = \frac{1}{|L|} \sum_{i} \text{CLC}(L_i)$$
+
+Where $C_i$ is the set of sample indices answered correctly in language $L_i$, and $|L|$ is the total number of languages evaluated.
+
+> A CLC of 1.0 means the model answers exactly the same questions correctly in every language. A CLC of 0.0 means there is no overlap at all between languages.
 
 ## 8. Adding Models
 
@@ -568,8 +583,7 @@ vLLM will load from the local path directly — no internet required.
 | `nep` | Nepali | Nepali | Nepglish |
 | `en` | English | — | — (use `run_language_en`) |
 
-The `-en` suffix variants (e.g. `hin-en`, `ben-en`) are subdirectories in `cm_klar/` containing the English-translated versions of the questions in that language. These are used only by the two baseline scripts.
-
+The `-en` suffix variants (e.g. `hin-en`, `ben-en`) are subdirectories in `cm_klar/` containing the **code-mixed (romanized)** versions of the questions in that language — e.g. Hinglish for Hindi, Banglish for Bengali. These are used only by the two baseline scripts.
 ---
 
 ## 11. Quick Troubleshooting
