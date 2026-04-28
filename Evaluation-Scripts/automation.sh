@@ -413,7 +413,7 @@ run_language_en() {
 # ============================================================
 
 # ── English (special handler — no CM / transliteration) ───────────────────────
-# run_language_en
+ run_language_en
 
 # ── Indic languages ───────────────────────────────────────────────────────────
 # run_language  "asm"    "Assamese"   "Assamese"   "Assamglish"
