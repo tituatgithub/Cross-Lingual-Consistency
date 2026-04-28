@@ -432,7 +432,7 @@ run_language  "pan"    "Punjabi"    "Punjabi"    "Punglish"
 run_language  "san"    "Sanskrit"   "Sanskrit"   "Sanglish"
 run_language  "snd"    "Sindhi"     "Sindhi"     "Sindlish"
 run_language  "tam"    "Tamil"      "Tamil"      "Tamlish"
-run_language  "tel"    "Telugu"     "Telugu"     "Teluglish"
+#run_language  "tel"    "Telugu"     "Telugu"     "Teluglish"
 run_language  "urd"    "Urdu"       "Urdu"       "Urglish"
 
 
