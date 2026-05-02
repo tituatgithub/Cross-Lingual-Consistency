@@ -43,7 +43,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # ──────────────────────────────────────────
 #  GPU — change to 0 if you want device 0
 # ──────────────────────────────────────────
-export CUDA_VISIBLE_DEVICES=1
+export CUDA_VISIBLE_DEVICES=0
 
 # ──────────────────────────────────────────
 #  BATCH_SIZE — prompts per vLLM batch
