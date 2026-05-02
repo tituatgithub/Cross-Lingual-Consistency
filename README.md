@@ -30,6 +30,7 @@ Clone this repository **anywhere on your machine** — there is no hard-coded ab
 ```bash
 git clone https://github.com/tituatgithub/cross-lingual-consistency.git
 cd cross-lingual-consistency/Evaluation-Scripts
+unzip cm_klar.zip -d .
 ```
 
 > **Important:** Every command you run — including the bash script and all Python scripts — must be executed from inside the `Evaluation-Scripts/` directory. The scripts glob for data using relative paths like `cm_klar/*/*.json`, so your working directory matters.
