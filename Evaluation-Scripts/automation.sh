@@ -8,7 +8,7 @@
 #    2.  Baseline_filter_knowns_with_obj  (filter_knowns_live_obj.py)
 #    3.  Implicit_CM                      (1_call_pure_implicit_cm.py)
 #    4.  Implicit_EN                      (1_call_pure_implicit_en.py)
-#    5.  1_Call_CM                        (1_call_cm_placeholder.py)
+#    5.  1_Call_CM                        (1_call_cm_placeholder_2.py)
 #    6.  1_Call_EN                        (1_call_en_placeholder.py)
 #    7.  2_Call_CM                        (2_call_cm_placeholder_correct.py)
 #    8.  2_Call_EN                        (2_call_en_placeholder.py)
@@ -50,13 +50,13 @@ export CUDA_VISIBLE_DEVICES=1
 #  (default matches original hardcoded values
 #   in each script; override here globally)
 # ──────────────────────────────────────────
-BATCH_SIZE=8
+BATCH_SIZE=64
 
 # ──────────────────────────────────────────
 #  GPU_MEM_UTIL — fraction of GPU memory
 #  that vLLM may use (0.0 – 1.0)
 # ──────────────────────────────────────────
-GPU_MEM_UTIL=0.20
+GPU_MEM_UTIL=0.55
 
 # ──────────────────────────────────────────
 #  MODELS — comment/uncomment as needed
@@ -64,36 +64,57 @@ GPU_MEM_UTIL=0.20
 # ──────────────────────────────────────────
 MODELS=(
     # ── Small / tiny models ────────────────
-    # "Qwen/Qwen2.5-0.5B"
-    # "Qwen/Qwen2.5-1.5B"
+    # "Qwen/Qwen2.5-0.5B-Instruct"
+    # "Qwen/Qwen2.5-1.5B-Instruct"
     # "Qwen/Qwen2.5-3B"
+    # "Qwen/Qwen2.5-3B-Instruct"
     # "meta-llama/Llama-3.2-1B"
+    # "meta-llama/Llama-3.2-1B-Instruct"
     # "meta-llama/Llama-3.2-3B"
+    # "meta-llama/Llama-3.2-3B-Instruct"
     # "google/gemma-3-270m"
     # "google/gemma-3-270m-it"
-    # "google/gemma-3-1b-pt"
-    # "google/gemma-3-1b-it"
+    # "google/gemma-3-1b-pt"   #only has hin
+    # "google/gemma-3-1b-it"  #only has hin
 
     # ── Mid-size models ────────────────────
-    # "meta-llama/Llama-3.1-8B"
-    # "meta-llama/Llama-3.1-8B-Instruct"
+    # "meta-llama/Llama-3.1-8B"   # missing ben
+    "meta-llama/Llama-3.1-8B-Instruct"
     # "Qwen/Qwen2.5-7B"
+    "Qwen/Qwen2.5-7B-Instruct"
     # "google/gemma-7b"
-    # "google/gemma-3-4b-it"
-    # "google/gemma-3-4b"
-    # "Qwen/Qwen3-8B"
-    # "google/gemma-3-12b-it"
-    # "google/gemma-3-12b-pt"
+    # "google/gemma-3-4b-it"  #only has hin
+    # "google/gemma-3-4b-pt"  #only has hin
+    # "Qwen/Qwen3-8B"  #only has hin
+    "google/gemma-3-12b-it"  #only has hin
+    # "google/gemma-3-12b-pt"  #everything missing
 
     # ── Large models ───────────────────────
     # "Qwen/Qwen2.5-14B"
-    # "Qwen/Qwen2.5-14B-Instruct"
+    "Qwen/Qwen2.5-14B-Instruct"
     # "deepseek-ai/DeepSeek-R1-Distill-Llama-8B"
-    "deepseek-ai/DeepSeek-R1-Distill-Qwen-14B"
+    # "deepseek-ai/DeepSeek-R1-Distill-Qwen-14B"
 
     # ── Qwen3 Instruct / Thinking ──────────
-    # "Qwen/Qwen3-4B-Instruct-2507"
-    # "Qwen/Qwen3-4B-Thinking-2507"
+    # "Qwen/Qwen3-4B-Instruct-2507"  #only hindi
+    # "Qwen/Qwen3-4B-Thinking-2507"  #only hindi
+
+
+     # "Qwen/Qwen3-4B"
+    # "Qwen/Qwen3-4B-Base"
+     # "Qwen/Qwen3-1.7B"
+     # "Qwen/Qwen3-0.6B"
+     # "Qwen/Qwen3-8B"
+    #  "Qwen 3.5 models"
+     "Qwen/Qwen3.5-9B"
+    #  "Qwen/Qwen3.5-9B-Base"
+     # "Qwen/Qwen3.5-4B"
+    #  "Qwen/Qwen3.5-4B-Base"
+     # "Qwen/Qwen3.5-2B"
+    #  "Qwen/Qwen3.5-2B-Base"
+     # "Qwen/Qwen3.5-0.8B"
+    #  "Qwen/Qwen3.5-0.8B-Base"
+
 )
 
 SEED=12345
@@ -232,7 +253,7 @@ run_language() {
         run_script \
             "1_Call_CM | ${SOURCE_LANG} | ${MODEL}" \
             "$(logfile "$LANG_CODE" "1_Call_CM" "$MODEL")" \
-            ${SCRIPT_DIR}/1_call_cm_placeholder.py \
+            ${SCRIPT_DIR}/1_call_cm_placeholder_2.py \
                 --model_name              "$MODEL" \
                 --seed                    "$SEED" \
                 --lang_code               "$LANG_CODE" \
@@ -413,26 +434,26 @@ run_language_en() {
 # ============================================================
 
 # ── English (special handler — no CM / transliteration) ───────────────────────
- run_language_en
+run_language_en
 
 # ── Indic languages ───────────────────────────────────────────────────────────
-# run_language  "asm"    "Assamese"   "Assamese"   "Assamglish"
-# run_language  "ben"    "Bengali"    "Bengali"    "Banglish"
-run_language  "doi"    "Dogri"      "Dogri"      "Dogrilish"
-# run_language  "guj"    "Gujarati"   "Gujarati"   "Gujlish"
-# run_language  "hin"    "Hindi"      "Hindi"      "Hinglish"
-run_language  "kan"    "Kannada"    "Kannada"    "Kanglish"
+run_language  "asm"    "Assamese"   "Assamese"   "Assamglish"       
+run_language  "ben"    "Bengali"    "Bengali"    "Banglish"         
+run_language  "doi"    "Dogri"      "Dogri"      "Dogrilish"        
+run_language  "guj"    "Gujarati"   "Gujarati"   "Gujlish"          
+run_language  "hin"    "Hindi"      "Hindi"      "Hinglish"         
+run_language  "kan"    "Kannada"    "Kannada"    "Kanglish"         
 run_language  "kon"    "Konkani"    "Konkani"    "Konklish"
 run_language  "mai"    "Maithili"   "Maithili"   "Maithilish"
 run_language  "mal"    "Malayalam"  "Malayalam"  "Malyalamglish"
 run_language  "mar"    "Marathi"    "Marathi"    "Marglish"
 run_language  "nep"    "Nepali"     "Nepali"     "Nepglish"
-# run_language  "ori"    "Odia"       "Odia"       "Odiglish"
+run_language  "ori"    "Odia"       "Odia"       "Odiglish"         
 run_language  "pan"    "Punjabi"    "Punjabi"    "Punglish"
 run_language  "san"    "Sanskrit"   "Sanskrit"   "Sanglish"
 run_language  "snd"    "Sindhi"     "Sindhi"     "Sindlish"
 run_language  "tam"    "Tamil"      "Tamil"      "Tamlish"
-#run_language  "tel"    "Telugu"     "Telugu"     "Teluglish"
+run_language  "tel"    "Telugu"     "Telugu"     "Teluglish"
 run_language  "urd"    "Urdu"       "Urdu"       "Urglish"
 
 
