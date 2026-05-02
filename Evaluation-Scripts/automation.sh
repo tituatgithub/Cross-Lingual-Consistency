@@ -148,7 +148,7 @@ run_script() {
     echo "════════════════════════════════════════════════════"
     # Swap the line below with the commented version to make failures fatal:
     # CUDA_VISIBLE_DEVICES=1 python "$@" 2>&1 | tee "$log"
-    CUDA_VISIBLE_DEVICES=1 python "$@" 2>&1 | tee "$log" || true
+    CUDA_VISIBLE_DEVICES=0 python "$@" 2>&1 | tee "$log" || true
     echo "  ✅  Done: ${label}"
 }
 
