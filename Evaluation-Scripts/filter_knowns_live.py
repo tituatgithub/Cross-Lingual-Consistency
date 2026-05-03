@@ -146,16 +146,54 @@ def evaluate(llm, dataset, max_new_tokens=10, n_shot=3, save_path="filter_knowns
     detailed_results = []
 
     model_safe_name = model_name.replace("/", "_")
-    live_dir = os.path.join(OUTPUT_DIR, model_safe_name)
+    lang_tag = args.lang_codes.replace(",", "_")
+
+    live_dir = os.path.join(OUTPUT_DIR, model_safe_name, lang_tag)
     os.makedirs(live_dir, exist_ok=True)
     live_path = os.path.join(live_dir, "LIVE.json")
+
+    # model_safe_name = model_name.replace("/", "_")
+    # live_dir = os.path.join(OUTPUT_DIR, model_safe_name)
+    # os.makedirs(live_dir, exist_ok=True)
+    # live_path = os.path.join(live_dir, "LIVE.json")
+
+    # ===== SKIP IF ALREADY COMPLETED =====
+    summary_path = save_path
+    if os.path.exists(summary_path):
+        print(f"⏭️ Skipping — already completed: {summary_path}")
+        return
 
     # Per-language detailed output dirs (created on demand)
     lang_detailed_results = defaultdict(list)
 
-    live_data = {"progress": "0/0", "percent": "0%", "current_example": None, "results_so_far": []}
-    with open(live_path, "w", encoding="utf-8") as f:
-        json.dump(live_data, f, indent=2, ensure_ascii=False)
+    # live_data = {"progress": "0/0", "percent": "0%", "current_example": None, "results_so_far": []}
+    # with open(live_path, "w", encoding="utf-8") as f:
+    #     json.dump(live_data, f, indent=2, ensure_ascii=False)
+# ===== RESUME LOGIC =====
+    start_index = 0
+    correct_total = 0
+    total_total = 0
+
+    if os.path.exists(live_path):
+        try:
+            with open(live_path, "r", encoding="utf-8") as f:
+                live_data = json.load(f)
+
+            # progress format: "123/1000"
+            progress_str = live_data.get("progress", "0/0")
+            start_index = int(progress_str.split("/")[0])
+
+            correct_total = int(float(live_data.get("running_accuracy", "0%").replace("%","")) * start_index / 100)
+            total_total = start_index
+
+            print(f"🔁 Resuming from index: {start_index}")
+
+        except Exception:
+            print("⚠️ Failed to read LIVE.json, starting fresh")
+            start_index = 0
+    else:
+        live_data = {"progress": "0/0", "percent": "0%", "current_example": None, "results_so_far": []}
+
 
     print(f"📁 Live log: {live_path}")
     print(f"💡 Tip: Run 'tail -f {live_path}' in another terminal to watch progress\n")
@@ -172,6 +210,8 @@ def evaluate(llm, dataset, max_new_tokens=10, n_shot=3, save_path="filter_knowns
     batch_size = args.batch_size
 
     for idx, ex in enumerate(tqdm(test_data)):
+        if idx < start_index:
+            continue
         lang = ex.get("language", "unknown")
         relation = ex.get("relation", "unknown")
         index = ex.get("index", None)
@@ -280,6 +320,15 @@ def evaluate(llm, dataset, max_new_tokens=10, n_shot=3, save_path="filter_knowns
 
     return results
 
-safe_save_path = f"filter_knowns_live_baseline/{model_name.replace('/', '_')}_results.json"
+
+
+lang_tag = args.lang_codes.replace(",", "_")
+model_safe = model_name.replace("/", "_")
+
+safe_save_path = f"filter_knowns_live_baseline/{model_safe}/{lang_tag}/summary.json"
+# safe_save_path = f"filter_knowns_live_baseline/{model_name.replace('/', '_')}_results.json"
 os.makedirs(os.path.dirname(safe_save_path), exist_ok=True)
+
+print("RUNNING FOR:", args.lang_codes)
+print("SAVE PATH:", safe_save_path)
 evaluate(llm, dataset, max_new_tokens=10, n_shot=3, save_path=safe_save_path)
