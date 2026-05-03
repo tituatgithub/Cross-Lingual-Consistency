@@ -273,6 +273,10 @@ def evaluate(llm, dataset, max_new_tokens=10, n_shot=3):
     os.makedirs(output_subdir, exist_ok=True)
 
     summary_path  = os.path.join(output_subdir, "summary.json")
+    # ===== SKIP IF ALREADY COMPLETED =====
+    if os.path.exists(summary_path):
+        print(f"⏭️ Skipping — already completed: {summary_path}")
+        return
     detailed_path = os.path.join(output_subdir, "detailed.json")
     live_path     = os.path.join(output_subdir, "LIVE.json")
 
@@ -289,18 +293,45 @@ def evaluate(llm, dataset, max_new_tokens=10, n_shot=3):
     prompt_metadata = []
     batch_size = args.batch_size
 
-    live_data = {
-        "progress": "0/0",
-        "percent": "0%",
-        "current_example": None,
-        "results_so_far": []
-    }
-    with open(live_path, "w", encoding="utf-8") as f:
-        json.dump(live_data, f, indent=2, ensure_ascii=False)
+    # live_data = {
+    #     "progress": "0/0",
+    #     "percent": "0%",
+    #     "current_example": None,
+    #     "results_so_far": []
+    # }
+    # with open(live_path, "w", encoding="utf-8") as f:
+    #     json.dump(live_data, f, indent=2, ensure_ascii=False)
+    # ===== RESUME LOGIC =====
+    start_index = 0
+    correct_total = 0
+    total_total = 0
 
-    pbar = tqdm(total=len(test_data), desc="Processing", unit="ex")
+    if os.path.exists(live_path):
+        try:
+            with open(live_path, "r", encoding="utf-8") as f:
+                live_data = json.load(f)
 
+            progress_str = live_data.get("progress", "0/0")
+            start_index = int(progress_str.split("/")[0])
+
+            correct_total = int(float(live_data.get("running_accuracy", "0%").replace("%","")) * start_index / 100)
+            total_total = start_index
+
+            print(f"🔁 Resuming from index: {start_index}")
+
+        except Exception:
+            print("⚠️ Failed to read LIVE.json, starting fresh")
+            start_index = 0
+    else:
+        live_data = {"progress": "0/0", "percent": "0%", "current_example": None, "results_so_far": []}
+
+    # pbar = tqdm(total=len(test_data), desc="Processing", unit="ex")
+    pbar = tqdm(total=len(test_data) - start_index, desc="Processing", unit="ex")
+
+    # for idx, ex in enumerate(test_data):
     for idx, ex in enumerate(test_data):
+        if idx < start_index:
+            continue
         lang     = ex.get("language", "unknown")
         relation = ex.get("relation", "unknown")
         index    = ex.get("index", None)
