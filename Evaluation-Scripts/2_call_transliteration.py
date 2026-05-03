@@ -258,6 +258,11 @@ def evaluate(llm, dataset, max_new_tokens=10, n_shot=3):
     os.makedirs(output_subdir, exist_ok=True)
 
     summary_path  = os.path.join(output_subdir, "summary.json")
+    # ===== SKIP IF ALREADY COMPLETED =====
+    if os.path.exists(summary_path):
+        print(f"⏭️ Skipping — already completed: {summary_path}")
+        return
+
     detailed_path = os.path.join(output_subdir, "detailed.json")
     live_path     = os.path.join(output_subdir, "LIVE.json")
 
@@ -574,14 +579,24 @@ def evaluate(llm, dataset, max_new_tokens=10, n_shot=3):
     
     batch_size      = args.batch_size
 
-    live_data = {
-        "progress":        "0/0",
-        "percent":         "0%",
-        "current_example": None,
-        "results_so_far":  []
-    }
-    with open(live_path, "w", encoding="utf-8") as f:
-        json.dump(live_data, f, indent=2, ensure_ascii=False)
+    # live_data = {
+    #     "progress":        "0/0",
+    #     "percent":         "0%",
+    #     "current_example": None,
+    #     "results_so_far":  []
+    # }
+    # with open(live_path, "w", encoding="utf-8") as f:
+    #     json.dump(live_data, f, indent=2, ensure_ascii=False)
+    # ===== SAFE INIT (DO NOT OVERWRITE IF EXISTS) =====
+    if os.path.exists(live_path):
+        try:
+            with open(live_path, "r", encoding="utf-8") as f:
+                live_data = json.load(f)
+            print("🔁 Found existing LIVE.json — continuing safely")
+        except Exception:
+            live_data = {"progress": "0/0", "percent": "0%", "current_example": None, "results_so_far": []}
+    else:
+        live_data = {"progress": "0/0", "percent": "0%", "current_example": None, "results_so_far": []}
 
     pbar = tqdm(total=len(test_data) * 2, desc="Processing (2-Stage)", unit="call")  # *2 for 2 calls per example
     
