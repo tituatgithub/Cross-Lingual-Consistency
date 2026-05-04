@@ -253,7 +253,7 @@ run_language() {
         run_script \
             "1_Call_CM | ${SOURCE_LANG} | ${MODEL}" \
             "$(logfile "$LANG_CODE" "1_Call_CM" "$MODEL")" \
-            ${SCRIPT_DIR}/1_call_cm_placeholder_2.py \
+            ${SCRIPT_DIR}/1_call_cm_placeholder.py \
                 --model_name              "$MODEL" \
                 --seed                    "$SEED" \
                 --lang_code               "$LANG_CODE" \
